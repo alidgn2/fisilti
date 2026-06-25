@@ -1,0 +1,74 @@
+{
+  "project_name": "Fısıltı Gazetesi",
+  "theme": "Organic & Earthy (Vintage Newspaper Editorial)",
+  "mode": "Light",
+  "colors": {
+    "background": "#F4EFE6",
+    "text_primary": "#1A1A1A",
+    "text_secondary": "#4A4A4A",
+    "ink_border": "#2C2C2C",
+    "stamp_red": "#B22222",
+    "faded_blue": "#4A6B82"
+  },
+  "typography": {
+    "import_url": "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Special+Elite&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&display=swap",
+    "masthead": "Playfair Display, serif",
+    "headings": "Cormorant Garamond, serif",
+    "body": "Special Elite, cursive",
+    "font_classes": {
+      "masthead": "font-serif font-black tracking-tighter",
+      "headings": "font-serif",
+      "body": "font-mono tracking-tight"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "grid_system": "CSS Columns for masonry feed (columns-1 md:columns-2 lg:columns-3 gap-8).",
+    "dividers": "Use border-b-2 or border-r-2 with border-black/30 (solid or dashed) to separate content.",
+    "card_style": "NO rounded corners. NO soft shadows. Transparent background, relying on borders and typography to separate posts."
+  },
+  "components": {
+    "Masthead": {
+      "description": "Main site header. Massive 'Fısıltı Gazetesi' text (Playfair Display Black). Date and issue number below it, bounded by thick double borders (border-y-4 border-double border-black). No transparent sticky header, keep it solid or purely relative to page."
+    },
+    "Whisper_Card": {
+      "description": "Feed item. No typical card box. Category tag as a 'rubber stamp'. First letter of whisper text is a drop cap (text-5xl float-left pr-2 pt-1 font-playfair). Text uses Special Elite font. Bottom has Upvote/Downvote."
+    },
+    "Stamp_Badge": {
+      "description": "Looks like a rubber stamp: uppercase, tracking-widest, text-[#B22222], border-2 border-[#B22222], transform -rotate-2 or rotate-2, mix-blend-multiply opacity-90, px-2 py-1 inline-block."
+    },
+    "Input_Form": {
+      "description": "Report a whisper form. Inputs styled like telegrams: border-b-2 border-black/50 border-dashed, bg-transparent, rounded-none. No SaaS-style focus rings, just a solid black border-bottom on focus."
+    }
+  },
+  "media_urls": {
+    "textures": [
+      {
+        "url": "https://images.pexels.com/photos/9219669/pexels-photo-9219669.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Vintage paper texture for global background overlay. Usage: fixed div covering screen, bg-cover, mix-blend-multiply, opacity-20, pointer-events-none."
+      }
+    ],
+    "categories": [
+      {
+        "category": "Kahvehane",
+        "url": "https://images.pexels.com/photos/29491080/pexels-photo-29491080.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Vintage coffee house"
+      },
+      {
+        "category": "Berber",
+        "url": "https://images.unsplash.com/photo-1592647420148-bfcc177e2117?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzB8MHwxfHNlYXJjaHwzfHx2aW50YWdlJTIwYmFyYmVyJTIwc2hvcHxlbnwwfHx8fDE3ODI0MDA3MDV8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Vintage barber shop"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "CRITICAL: Do not use standard Shadcn cards with rounded borders and shadows. The aesthetic is a 1960s Turkish newspaper.",
+    "Must add the Google Fonts import to the main CSS/HTML and configure Tailwind to use them as font-sans/serif/mono appropriately.",
+    "Apply a global sepia background (#F4EFE6) and use the provided vintage paper texture image as a fixed overlay with `mix-blend-multiply` and `opacity-[0.15]`.",
+    "Layout relies heavily on CSS columns and dashed/solid black borders to separate content, typical of newspaper layouts.",
+    "Use standard Lucide icons but style them flat (ink color), no modern hover backgrounds.",
+    "All interactive elements MUST have `data-testid` attribute (e.g., `data-testid=\"upvote-button\"`).",
+    "Use pure HTML+Tailwind for the feed layout. Use Shadcn strictly for complex interactions but STRIP their default Vercel-look styling completely (remove rounded corners, replace box-shadows with sharp 1px borders).",
+    "Ensure the Turkish text uses correct characters. Add typical old newspaper phrases like 'Son Dakika', 'Günün Fısıltısı'."
+  ]
+}
