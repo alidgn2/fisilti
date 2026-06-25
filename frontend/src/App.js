@@ -1,56 +1,64 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { Toaster } from "@/components/ui/sonner";
+import Masthead from "@/components/Masthead";
+import Home from "@/pages/Home";
+import Login from "@/pages/Login";
+import Register from "@/pages/Register";
+import Compose from "@/pages/Compose";
+import WhisperDetail from "@/pages/WhisperDetail";
+import Profile from "@/pages/Profile";
+import AuthCallback from "@/pages/AuthCallback";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+function Footer() {
+    return (
+        <footer className="border-t-4 border-double border-ink mt-16 py-8 relative z-10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center font-mono text-[11px] uppercase tracking-[0.3em] text-inkmuted">
+                Fısıltı Gazetesi — Mahalle Ajansı • Söylentidir, Haber Değildir • {new Date().getFullYear()}
+            </div>
+        </footer>
+    );
+}
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
+function AppShell() {
+    const location = useLocation();
+    // Detect Emergent OAuth callback in URL hash (any route)
+    if (location.hash?.includes("session_id=")) {
+        return <AuthCallback />;
     }
-  };
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
+    return (
+        <>
+            <Masthead />
+            <main className="min-h-[60vh]">
+                <Routes>
+                    <Route path="/" element={<Home />} />
+                    <Route path="/giris" element={<Login />} />
+                    <Route path="/kayit" element={<Register />} />
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/fisilti/:id" element={<WhisperDetail />} />
+                    <Route path="/yaz" element={<ProtectedRoute><Compose /></ProtectedRoute>} />
+                    <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+                </Routes>
+            </main>
+            <Footer />
+        </>
+    );
+}
 
 function App() {
-  return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
-  );
+    return (
+        <div className="App paper-texture grain">
+            <BrowserRouter>
+                <AuthProvider>
+                    <AppShell />
+                    <Toaster position="top-right" />
+                </AuthProvider>
+            </BrowserRouter>
+        </div>
+    );
 }
 
 export default App;

@@ -1,115 +1,192 @@
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Special+Elite&family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-body {
+html, body {
     margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
+    background-color: #F4EFE6;
+    color: #1A1A1A;
+    font-family: "Cormorant Garamond", serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
-}
+::selection { background: #B22222; color: #F4EFE6; }
 
 @layer base {
     :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
-        --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
-    }
-    .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
+        --background: 38 32% 93%;
+        --foreground: 0 0% 10%;
+        --card: 38 32% 93%;
+        --card-foreground: 0 0% 10%;
+        --popover: 38 32% 93%;
+        --popover-foreground: 0 0% 10%;
+        --primary: 0 0% 10%;
+        --primary-foreground: 38 32% 93%;
+        --secondary: 38 25% 86%;
+        --secondary-foreground: 0 0% 10%;
+        --muted: 38 25% 86%;
+        --muted-foreground: 0 0% 30%;
+        --accent: 38 25% 86%;
+        --accent-foreground: 0 0% 10%;
+        --destructive: 0 70% 42%;
+        --destructive-foreground: 38 32% 93%;
+        --border: 0 0% 18%;
+        --input: 0 0% 18%;
+        --ring: 0 0% 10%;
+        --radius: 0px;
     }
 }
 
 @layer base {
-    * {
-        @apply border-border;
-    }
     body {
-        @apply bg-background text-foreground;
+        @apply bg-paper text-ink;
+    }
+    h1, h2, h3, h4 {
+        font-family: "Playfair Display", serif;
     }
 }
 
-@layer base {
-    [data-debug-wrapper="true"] {
-        display: contents !important;
-    }
+/* Newspaper paper texture overlay */
+.paper-texture::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: url("https://images.pexels.com/photos/9219669/pexels-photo-9219669.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940");
+    background-size: cover;
+    background-position: center;
+    mix-blend-mode: multiply;
+    opacity: 0.15;
+    pointer-events: none;
+    z-index: 0;
+}
 
-    [data-debug-wrapper="true"] > * {
-        margin-left: inherit;
-        margin-right: inherit;
-        margin-top: inherit;
-        margin-bottom: inherit;
-        padding-left: inherit;
-        padding-right: inherit;
-        padding-top: inherit;
-        padding-bottom: inherit;
-        column-gap: inherit;
-        row-gap: inherit;
-        gap: inherit;
-        border-left-width: inherit;
-        border-right-width: inherit;
-        border-top-width: inherit;
-        border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
-    }
+/* Halftone noise overlay for extra grain */
+.grain::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(rgba(0,0,0,0.18) 1px, transparent 1px);
+    background-size: 3px 3px;
+    mix-blend-mode: multiply;
+    opacity: 0.08;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Drop cap for whisper bodies */
+.dropcap::first-letter {
+    font-family: "Playfair Display", serif;
+    font-weight: 900;
+    font-size: 4.25rem;
+    float: left;
+    line-height: 0.85;
+    padding-right: 0.5rem;
+    padding-top: 0.35rem;
+    color: #1A1A1A;
+}
+
+/* Rubber stamp look for category tags */
+.stamp {
+    display: inline-block;
+    border: 2px solid #B22222;
+    color: #B22222;
+    padding: 0.25rem 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    font-family: "Special Elite", monospace;
+    font-size: 0.7rem;
+    transform: rotate(-2deg);
+    mix-blend-mode: multiply;
+    background: transparent;
+}
+
+.stamp-blue {
+    border-color: #4A6B82;
+    color: #4A6B82;
+    transform: rotate(1.5deg);
+}
+
+.stamp-ink {
+    border-color: #1A1A1A;
+    color: #1A1A1A;
+    transform: rotate(-1deg);
+}
+
+/* Telegram-style input: dashed underline, no box */
+.telegram-input {
+    background: transparent;
+    border: none;
+    border-bottom: 2px dashed rgba(26,26,26,0.5);
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0.5rem 0.25rem;
+    font-family: "Special Elite", monospace;
+    color: #1A1A1A;
+    outline: none;
+    width: 100%;
+    transition: border-color 0.2s;
+}
+.telegram-input:focus {
+    border-bottom: 2px solid #1A1A1A;
+    outline: none;
+    box-shadow: none;
+    ring: 0;
+}
+.telegram-input::placeholder { color: rgba(26,26,26,0.4); }
+
+/* Sharp button: no rounding, ink border */
+.btn-ink {
+    background: #1A1A1A;
+    color: #F4EFE6;
+    padding: 0.6rem 1.2rem;
+    font-family: "Special Elite", monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    border: 2px solid #1A1A1A;
+    cursor: pointer;
+    transition: transform 0.15s, background 0.15s;
+}
+.btn-ink:hover { background: #F4EFE6; color: #1A1A1A; }
+.btn-ink:active { transform: translate(1px, 1px); }
+.btn-ink:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-outline-ink {
+    background: transparent;
+    color: #1A1A1A;
+    padding: 0.6rem 1.2rem;
+    font-family: "Special Elite", monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    border: 2px solid #1A1A1A;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.btn-outline-ink:hover { background: #1A1A1A; color: #F4EFE6; }
+
+.divider-dashed {
+    border-top: 1px dashed rgba(26,26,26,0.4);
+}
+.divider-solid {
+    border-top: 1px solid rgba(26,26,26,0.4);
+}
+.divider-double {
+    border-top: 4px double rgba(26,26,26,0.7);
+}
+
+/* Newspaper column gap */
+.newsfeed {
+    column-gap: 2.5rem;
+    column-rule: 1px dashed rgba(26,26,26,0.3);
+}
+
+/* Hide scrollbar artifacts on selects */
+.no-arrow { -webkit-appearance: none; appearance: none; background-image: none; }
+
+@layer base {
+    [data-debug-wrapper="true"] { display: contents !important; }
 }
