@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, UserPlus, UserMinus } from "lucide-react";
 
 export default function PublicProfile() {
     const { userId } = useParams();
@@ -14,6 +14,29 @@ export default function PublicProfile() {
     const [whispers, setWhispers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
+    const [followBusy, setFollowBusy] = useState(false);
+
+    const toggleFollow = async () => {
+        if (!currentUser) {
+            navigate("/giris");
+            return;
+        }
+        if (followBusy) return;
+        setFollowBusy(true);
+        try {
+            const { data } = await api.post(`/users/${userId}/follow`);
+            setProfile((p) => p ? {
+                ...p,
+                is_following: data.is_following,
+                stats: { ...p.stats, follower_count: data.follower_count },
+            } : p);
+            toast.success(data.is_following ? "Takip ediliyor" : "Takipten çıkıldı");
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setFollowBusy(false);
+        }
+    };
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -89,12 +112,26 @@ export default function PublicProfile() {
                     </div>
                 </div>
 
-                <div className="md:col-span-2 grid grid-cols-3 gap-4 items-center md:border-l-2 md:border-dashed md:border-ink/40 md:pl-6">
+                <div className="md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center md:border-l-2 md:border-dashed md:border-ink/40 md:pl-6">
                     <Stat label="Fısıltı" value={stats.whisper_count ?? 0} testid="public-stat-whispers" />
+                    <Stat label="Takipçi" value={stats.follower_count ?? 0} testid="public-stat-followers" />
                     <Stat label="Doğru" value={stats.total_upvotes ?? 0} testid="public-stat-up" />
                     <Stat label="Yalan" value={stats.total_downvotes ?? 0} testid="public-stat-down" />
                 </div>
             </div>
+
+            {!profile.is_self && (
+                <div className="mt-6 flex justify-end">
+                    <button
+                        onClick={toggleFollow}
+                        disabled={followBusy}
+                        className={profile.is_following ? "btn-outline-ink flex items-center gap-2" : "btn-ink flex items-center gap-2"}
+                        data-testid="public-profile-follow-btn"
+                    >
+                        {profile.is_following ? <><UserMinus size={14} /> Takipten Çık</> : <><UserPlus size={14} /> Takip Et</>}
+                    </button>
+                </div>
+            )}
 
             <div className="mt-10">
                 <h3 className="font-masthead text-2xl font-black mb-4 border-b-2 border-double border-ink pb-2">

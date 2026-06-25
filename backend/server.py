@@ -416,6 +416,25 @@ async def create_whisper(body: WhisperCreate, user=Depends(get_current_user)):
     return await serialize_whisper(doc, user)
 
 
+@api_router.get("/whispers/following")
+async def following_feed(
+    request: Request,
+    limit: int = Query(default=30, ge=1, le=100),
+):
+    user = await get_optional_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Giriş yapmanız gerekiyor")
+    follows = await db.follows.find(
+        {"follower_id": user["user_id"]}, {"_id": 0, "followee_id": 1}
+    ).to_list(length=2000)
+    followee_ids = [f["followee_id"] for f in follows]
+    if not followee_ids:
+        return []
+    cursor = db.whispers.find({"user_id": {"$in": followee_ids}}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    return [await serialize_whisper(d, user) for d in docs]
+
+
 @api_router.get("/whispers/{whisper_id}")
 async def get_whisper(whisper_id: str, request: Request):
     w = await db.whispers.find_one({"whisper_id": whisper_id}, {"_id": 0})
@@ -510,11 +529,10 @@ async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_
 # Profile
 # ---------------------------------------------------------------------------
 @api_router.get("/users/{user_id}")
-async def get_user_public(user_id: str):
+async def get_user_public(user_id: str, request: Request):
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0, "email": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
-    # Public profile + stats
     whisper_count = await db.whispers.count_documents({"user_id": user_id})
     pipeline = [
         {"$match": {"user_id": user_id}},
@@ -523,18 +541,58 @@ async def get_user_public(user_id: str):
     agg = await db.whispers.aggregate(pipeline).to_list(length=1)
     total_up = agg[0]["up"] if agg else 0
     total_down = agg[0]["down"] if agg else 0
+    follower_count = await db.follows.count_documents({"followee_id": user_id})
+    following_count = await db.follows.count_documents({"follower_id": user_id})
+
+    is_following = False
+    is_self = False
+    current = await get_optional_user(request)
+    if current:
+        is_self = current["user_id"] == user_id
+        if not is_self:
+            f = await db.follows.find_one({"follower_id": current["user_id"], "followee_id": user_id})
+            is_following = f is not None
+
     return {
         "user_id": user["user_id"],
         "name": user.get("name", "Anonim"),
         "picture": user.get("picture"),
         "created_at": user.get("created_at"),
+        "is_following": is_following,
+        "is_self": is_self,
         "stats": {
             "whisper_count": whisper_count,
             "total_upvotes": total_up,
             "total_downvotes": total_down,
             "credibility": total_up - total_down,
+            "follower_count": follower_count,
+            "following_count": following_count,
         },
     }
+
+
+@api_router.post("/users/{user_id}/follow")
+async def follow_user(user_id: str, user=Depends(get_current_user)):
+    if user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Kendini takip edemezsin")
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+
+    existing = await db.follows.find_one({"follower_id": user["user_id"], "followee_id": user_id})
+    if existing:
+        await db.follows.delete_one({"_id": existing["_id"]})
+        is_following = False
+    else:
+        await db.follows.insert_one({
+            "follower_id": user["user_id"],
+            "followee_id": user_id,
+            "created_at": iso(now_utc()),
+        })
+        is_following = True
+
+    follower_count = await db.follows.count_documents({"followee_id": user_id})
+    return {"is_following": is_following, "follower_count": follower_count}
 
 
 @api_router.get("/users/{user_id}/whispers")
@@ -555,11 +613,15 @@ async def my_stats(user=Depends(get_current_user)):
     agg = await db.whispers.aggregate(pipeline).to_list(length=1)
     total_up = agg[0]["up"] if agg else 0
     total_down = agg[0]["down"] if agg else 0
+    follower_count = await db.follows.count_documents({"followee_id": user["user_id"]})
+    following_count = await db.follows.count_documents({"follower_id": user["user_id"]})
     return {
         "whisper_count": whisper_count,
         "total_upvotes": total_up,
         "total_downvotes": total_down,
         "credibility": total_up - total_down,
+        "follower_count": follower_count,
+        "following_count": following_count,
     }
 
 
@@ -621,8 +683,11 @@ async def on_startup():
     await db.whispers.create_index("whisper_id", unique=True)
     await db.whispers.create_index("created_at")
     await db.whispers.create_index("category")
+    await db.whispers.create_index("user_id")
     await db.votes.create_index([("whisper_id", 1), ("user_id", 1)], unique=True)
     await db.comments.create_index("whisper_id")
+    await db.follows.create_index([("follower_id", 1), ("followee_id", 1)], unique=True)
+    await db.follows.create_index("followee_id")
     await seed_admin()
 
 

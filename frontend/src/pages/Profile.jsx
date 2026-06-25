@@ -51,8 +51,9 @@ export default function Profile() {
                     </div>
                 </div>
 
-                <div className="md:col-span-2 grid grid-cols-3 gap-4 items-center md:border-l-2 md:border-dashed md:border-ink/40 md:pl-6">
+                <div className="md:col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center md:border-l-2 md:border-dashed md:border-ink/40 md:pl-6">
                     <Stat label="Fısıltı" value={stats?.whisper_count ?? "—"} testid="stat-whispers" />
+                    <Stat label="Takipçi" value={stats?.follower_count ?? "—"} testid="stat-followers" />
                     <Stat label="Doğru" value={stats?.total_upvotes ?? "—"} testid="stat-up" />
                     <Stat label="Yalan" value={stats?.total_downvotes ?? "—"} testid="stat-down" />
                 </div>

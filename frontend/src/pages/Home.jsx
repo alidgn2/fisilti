@@ -3,12 +3,14 @@ import { api, formatApiError } from "@/lib/api";
 import { CATEGORIES } from "@/constants/categories";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
-import { Flame, Clock, Trophy, Newspaper } from "lucide-react";
+import { Flame, Clock, Trophy, Newspaper, Users } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 const SORTS = [
     { id: "new", label: "En Yeni", icon: Clock },
     { id: "trending", label: "Yükselen", icon: Flame },
     { id: "top", label: "En Çok Konuşulan", icon: Trophy },
+    { id: "following", label: "Takip Ettiklerim", icon: Users, requiresAuth: true },
 ];
 
 export default function Home() {
@@ -16,18 +18,28 @@ export default function Home() {
     const [loading, setLoading] = useState(true);
     const [category, setCategory] = useState("all");
     const [sort, setSort] = useState("trending");
+    const { user } = useAuth();
 
     const load = useCallback(async () => {
         setLoading(true);
         try {
-            const { data } = await api.get("/whispers", { params: { category, sort, limit: 60 } });
-            setWhispers(data);
+            if (sort === "following") {
+                if (!user) {
+                    setWhispers([]);
+                    return;
+                }
+                const { data } = await api.get("/whispers/following", { params: { limit: 60 } });
+                setWhispers(data);
+            } else {
+                const { data } = await api.get("/whispers", { params: { category, sort, limit: 60 } });
+                setWhispers(data);
+            }
         } catch (e) {
             toast.error(formatApiError(e));
         } finally {
             setLoading(false);
         }
-    }, [category, sort]);
+    }, [category, sort, user]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -46,39 +58,45 @@ export default function Home() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                    {SORTS.map(({ id, label, icon: Icon }) => (
-                        <button
-                            key={id}
-                            onClick={() => setSort(id)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-ink font-mono text-[11px] uppercase tracking-widest transition-colors ${sort === id ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"}`}
-                            data-testid={`sort-${id}-btn`}
-                        >
-                            <Icon size={12} /> {label}
-                        </button>
-                    ))}
+                    {SORTS.map(({ id, label, icon: Icon, requiresAuth }) => {
+                        if (requiresAuth && !user) return null;
+                        return (
+                            <button
+                                key={id}
+                                onClick={() => setSort(id)}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 border-2 border-ink font-mono text-[11px] uppercase tracking-widest transition-colors ${sort === id ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"}`}
+                                data-testid={`sort-${id}-btn`}
+                            >
+                                <Icon size={12} /> {label}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
-            {/* Category chips */}
-            <div className="flex flex-wrap gap-2 mb-8 pb-6 border-b-2 border-double border-ink">
-                <button
-                    onClick={() => setCategory("all")}
-                    className={`px-3 py-1 border-2 border-ink font-mono text-[11px] uppercase tracking-widest transition-colors ${category === "all" ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"}`}
-                    data-testid="category-all-btn"
-                >
-                    Hepsi
-                </button>
-                {CATEGORIES.map((c) => (
+            {/* Category chips - hidden when viewing following feed */}
+            {sort !== "following" && (
+                <div className="flex flex-wrap gap-2 mb-8 pb-6 border-b-2 border-double border-ink">
                     <button
-                        key={c.id}
-                        onClick={() => setCategory(c.id)}
-                        className={`px-3 py-1 border-2 border-ink font-mono text-[11px] uppercase tracking-widest transition-colors ${category === c.id ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"}`}
-                        data-testid={`category-${c.id}-btn`}
+                        onClick={() => setCategory("all")}
+                        className={`px-3 py-1 border-2 border-ink font-mono text-[11px] uppercase tracking-widest transition-colors ${category === "all" ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"}`}
+                        data-testid="category-all-btn"
                     >
-                        {c.label}
+                        Hepsi
                     </button>
-                ))}
-            </div>
+                    {CATEGORIES.map((c) => (
+                        <button
+                            key={c.id}
+                            onClick={() => setCategory(c.id)}
+                            className={`px-3 py-1 border-2 border-ink font-mono text-[11px] uppercase tracking-widest transition-colors ${category === c.id ? "bg-ink text-paper" : "hover:bg-ink hover:text-paper"}`}
+                            data-testid={`category-${c.id}-btn`}
+                        >
+                            {c.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+            {sort === "following" && <div className="mb-8 pb-6 border-b-2 border-double border-ink" />}
 
             {/* Headline + Feed */}
             {loading ? (
@@ -86,7 +104,7 @@ export default function Home() {
                     Baskı makineleri çalışıyor...
                 </div>
             ) : whispers.length === 0 ? (
-                <EmptyState />
+                <EmptyState following={sort === "following"} />
             ) : (
                 <>
                     {/* Lead Story */}
@@ -132,12 +150,14 @@ export default function Home() {
     );
 }
 
-function EmptyState() {
+function EmptyState({ following = false }) {
     return (
         <div className="text-center py-20 border-2 border-dashed border-ink/50" data-testid="home-empty-state">
             <p className="font-masthead text-3xl font-black">Sessizlik...</p>
             <p className="font-serif text-lg italic mt-2 text-inkmuted">
-                Bu kategoride henüz bir fısıltı kayda geçmedi. İlk muhabir sen ol.
+                {following
+                    ? "Henüz takip ettiğin muhabir yok ya da onlardan yeni bir fısıltı çıkmamış. Bir muhabir profili açıp 'Takip Et'e bas."
+                    : "Bu kategoride henüz bir fısıltı kayda geçmedi. İlk muhabir sen ol."}
             </p>
         </div>
     );
