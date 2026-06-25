@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { ArrowUp, ArrowDown, MessageSquare, MapPin, Ear } from "lucide-react";
+import { ArrowUp, ArrowDown, MessageSquare, MapPin, Ear, Share2 } from "lucide-react";
 import StampBadge from "@/components/StampBadge";
+import ShareModal from "@/components/ShareModal";
 import { api, formatApiError } from "@/lib/api";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +21,7 @@ function timeAgoTr(iso) {
 export default function WhisperCard({ whisper, onChange, compact = false }) {
     const [w, setW] = useState(whisper);
     const [busy, setBusy] = useState(false);
+    const [shareOpen, setShareOpen] = useState(false);
     const { user } = useAuth();
     const navigate = useNavigate();
 
@@ -110,8 +112,18 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
                     >
                         <MessageSquare size={13} /> {w.comment_count}
                     </Link>
+                    <button
+                        onClick={() => setShareOpen(true)}
+                        className="ml-1 flex items-center gap-1 px-2 py-1 border-2 border-ink hover:bg-ink hover:text-paper"
+                        data-testid={`whisper-share-btn-${w.whisper_id}`}
+                        aria-label="Paylaş"
+                    >
+                        <Share2 size={13} />
+                    </button>
                 </div>
             </div>
+
+            <ShareModal open={shareOpen} onOpenChange={setShareOpen} whisper={w} />
         </article>
     );
 }
