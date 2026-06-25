@@ -509,6 +509,34 @@ async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_
 # ---------------------------------------------------------------------------
 # Profile
 # ---------------------------------------------------------------------------
+@api_router.get("/users/{user_id}")
+async def get_user_public(user_id: str):
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0, "email": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+    # Public profile + stats
+    whisper_count = await db.whispers.count_documents({"user_id": user_id})
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$group": {"_id": None, "up": {"$sum": "$upvotes"}, "down": {"$sum": "$downvotes"}}}
+    ]
+    agg = await db.whispers.aggregate(pipeline).to_list(length=1)
+    total_up = agg[0]["up"] if agg else 0
+    total_down = agg[0]["down"] if agg else 0
+    return {
+        "user_id": user["user_id"],
+        "name": user.get("name", "Anonim"),
+        "picture": user.get("picture"),
+        "created_at": user.get("created_at"),
+        "stats": {
+            "whisper_count": whisper_count,
+            "total_upvotes": total_up,
+            "total_downvotes": total_down,
+            "credibility": total_up - total_down,
+        },
+    }
+
+
 @api_router.get("/users/{user_id}/whispers")
 async def user_whispers(user_id: str, request: Request):
     cursor = db.whispers.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)

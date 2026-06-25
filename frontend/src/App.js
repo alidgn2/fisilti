@@ -9,6 +9,7 @@ import Register from "@/pages/Register";
 import Compose from "@/pages/Compose";
 import WhisperDetail from "@/pages/WhisperDetail";
 import Profile from "@/pages/Profile";
+import PublicProfile from "@/pages/PublicProfile";
 import AuthCallback from "@/pages/AuthCallback";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -39,6 +40,7 @@ function AppShell() {
                     <Route path="/kayit" element={<Register />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/fisilti/:id" element={<WhisperDetail />} />
+                    <Route path="/muhabir/:userId" element={<PublicProfile />} />
                     <Route path="/yaz" element={<ProtectedRoute><Compose /></ProtectedRoute>} />
                     <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 </Routes>

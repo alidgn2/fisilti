@@ -63,7 +63,14 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
 
             <div className="mt-4 flex items-center justify-between gap-3 flex-wrap text-[12px] font-mono uppercase tracking-wider text-inkmuted">
                 <div className="flex items-center gap-3 flex-wrap">
-                    <span>— {w.author_name}</span>
+                    <Link
+                        to={`/muhabir/${w.author_id}`}
+                        className="hover:text-ink hover:underline transition-colors"
+                        data-testid={`whisper-author-link-${w.whisper_id}`}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        — {w.author_name}
+                    </Link>
                     {w.overheard_from && (
                         <span className="flex items-center gap-1">
                             <Ear size={12} /> {w.overheard_from}

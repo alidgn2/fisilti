@@ -123,7 +123,9 @@ export default function WhisperDetail() {
                 {comments.map((c) => (
                     <li key={c.comment_id} className="border-b border-dashed border-ink/30 pb-4" data-testid={`comment-${c.comment_id}`}>
                         <div className="flex items-center justify-between font-mono text-[11px] uppercase tracking-widest text-inkmuted mb-1">
-                            <span>— {c.author_name}</span>
+                            <Link to={`/muhabir/${c.user_id}`} className="hover:text-ink hover:underline" data-testid={`comment-author-link-${c.comment_id}`}>
+                                — {c.author_name}
+                            </Link>
                             <span>{new Date(c.created_at).toLocaleString("tr-TR")}</span>
                         </div>
                         <p className="font-serif text-lg leading-relaxed">{c.content}</p>
