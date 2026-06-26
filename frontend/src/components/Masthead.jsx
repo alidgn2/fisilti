@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { PenLine, LogIn, UserCircle2, LogOut, Newspaper } from "lucide-react";
+import { PenLine, LogIn, UserCircle2, LogOut, Newspaper, ShieldCheck } from "lucide-react";
+import NotificationBell from "@/components/NotificationBell";
 
 function todayTr() {
     const days = ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"];
@@ -45,6 +46,12 @@ export default function Masthead() {
                                     <PenLine size={14} />
                                     Fısıltı Yaz
                                 </button>
+                                <NotificationBell />
+                                {user.role === "admin" && (
+                                    <Link to="/editor" className="btn-outline-ink flex items-center gap-2" data-testid="masthead-admin-link">
+                                        <ShieldCheck size={14} /> Editör
+                                    </Link>
+                                )}
                                 <Link to="/profil" data-testid="masthead-profile-link" className="btn-outline-ink flex items-center gap-2">
                                     <UserCircle2 size={14} />
                                     {user.name?.split(" ")[0] || "Profil"}

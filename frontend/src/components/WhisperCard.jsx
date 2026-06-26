@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
-import { ArrowUp, ArrowDown, MessageSquare, MapPin, Ear, Share2 } from "lucide-react";
+import { ArrowUp, ArrowDown, MessageSquare, MapPin, Ear, Share2, Flag, Megaphone, Sparkles } from "lucide-react";
 import StampBadge from "@/components/StampBadge";
 import ShareModal from "@/components/ShareModal";
+import ReportDialog from "@/components/ReportDialog";
+import HashtagText from "@/components/HashtagText";
 import { api, formatApiError } from "@/lib/api";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -22,6 +24,7 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
     const [w, setW] = useState(whisper);
     const [busy, setBusy] = useState(false);
     const [shareOpen, setShareOpen] = useState(false);
+    const [reportOpen, setReportOpen] = useState(false);
     const { user } = useAuth();
     const navigate = useNavigate();
 
@@ -51,7 +54,19 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
             data-testid={`whisper-card-${w.whisper_id}`}
         >
             <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                <StampBadge categoryId={w.category} />
+                <div className="flex items-center gap-2 flex-wrap">
+                    <StampBadge categoryId={w.category} />
+                    {w.is_boosted && (
+                        <span className="stamp stamp-ink flex items-center gap-1" data-testid={`boosted-stamp-${w.whisper_id}`}>
+                            <Sparkles size={10} /> Manşet
+                        </span>
+                    )}
+                    {w.is_sponsored && (
+                        <span className="stamp stamp-blue flex items-center gap-1" data-testid={`sponsored-stamp-${w.whisper_id}`}>
+                            <Megaphone size={10} /> Sponsorlu
+                        </span>
+                    )}
+                </div>
                 <span className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">
                     {timeAgoTr(w.created_at)}
                 </span>
@@ -59,7 +74,7 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
 
             <Link to={`/fisilti/${w.whisper_id}`} className="block group" data-testid={`whisper-link-${w.whisper_id}`}>
                 <p className={`font-mono leading-relaxed text-[15px] text-ink ${compact ? "" : "dropcap"}`}>
-                    {w.content}
+                    <HashtagText>{w.content}</HashtagText>
                 </p>
             </Link>
 
@@ -120,10 +135,22 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
                     >
                         <Share2 size={13} />
                     </button>
+                    {user && user.user_id !== w.author_id && (
+                        <button
+                            onClick={() => setReportOpen(true)}
+                            className="ml-1 flex items-center gap-1 px-2 py-1 border-2 border-ink hover:bg-stamp hover:text-paper hover:border-stamp"
+                            data-testid={`whisper-report-btn-${w.whisper_id}`}
+                            aria-label="Bildir"
+                            title="Bildir"
+                        >
+                            <Flag size={13} />
+                        </button>
+                    )}
                 </div>
             </div>
 
             <ShareModal open={shareOpen} onOpenChange={setShareOpen} whisper={w} />
+            <ReportDialog open={reportOpen} onOpenChange={setReportOpen} whisperId={w.whisper_id} />
         </article>
     );
 }

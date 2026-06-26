@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { Trash2, ArrowLeft } from "lucide-react";
+import { Trash2, ArrowLeft, Sparkles } from "lucide-react";
 
 export default function WhisperDetail() {
     const { id } = useParams();
@@ -65,6 +65,21 @@ export default function WhisperDetail() {
         }
     };
 
+    const boost = async () => {
+        try {
+            const { data } = await api.post("/boost/checkout", {
+                whisper_id: id,
+                package_id: "boost_24h",
+                origin_url: window.location.origin,
+            });
+            if (data.url) {
+                window.location.href = data.url;
+            }
+        } catch (e) {
+            toast.error(formatApiError(e));
+        }
+    };
+
     if (loading) {
         return <div className="py-20 text-center font-mono uppercase tracking-widest text-inkmuted text-sm" data-testid="detail-loading">Sayfa açılıyor...</div>;
     }
@@ -86,11 +101,23 @@ export default function WhisperDetail() {
                 <button onClick={() => navigate(-1)} className="flex items-center gap-1 hover:text-ink" data-testid="detail-back-btn">
                     <ArrowLeft size={12} /> Geri
                 </button>
-                {isOwner && (
-                    <button onClick={removeWhisper} className="flex items-center gap-1 text-stamp hover:underline" data-testid="detail-delete-btn">
-                        <Trash2 size={12} /> Sil
-                    </button>
-                )}
+                <div className="flex items-center gap-3">
+                    {user && user.user_id === whisper.author_id && !whisper.is_boosted && !whisper.is_sponsored && (
+                        <button onClick={boost} className="flex items-center gap-1 hover:text-stamp" data-testid="detail-boost-btn" title="Manşete sabitle (₺25 / 24 saat)">
+                            <Sparkles size={12} /> Manşete Taşı (₺25)
+                        </button>
+                    )}
+                    {user && user.user_id === whisper.author_id && whisper.is_boosted && (
+                        <span className="flex items-center gap-1 text-stamp" data-testid="detail-boost-active">
+                            <Sparkles size={12} /> Manşette
+                        </span>
+                    )}
+                    {isOwner && (
+                        <button onClick={removeWhisper} className="flex items-center gap-1 text-stamp hover:underline" data-testid="detail-delete-btn">
+                            <Trash2 size={12} /> Sil
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="border-2 border-ink p-6 sm:p-8 mb-10 bg-paper/60">

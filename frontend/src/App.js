@@ -10,6 +10,9 @@ import Compose from "@/pages/Compose";
 import WhisperDetail from "@/pages/WhisperDetail";
 import Profile from "@/pages/Profile";
 import PublicProfile from "@/pages/PublicProfile";
+import HashtagFeed from "@/pages/HashtagFeed";
+import PaymentSuccess from "@/pages/PaymentSuccess";
+import AdminPanel from "@/pages/AdminPanel";
 import AuthCallback from "@/pages/AuthCallback";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
@@ -41,6 +44,9 @@ function AppShell() {
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/fisilti/:id" element={<WhisperDetail />} />
                     <Route path="/muhabir/:userId" element={<PublicProfile />} />
+                    <Route path="/etiket/:tag" element={<HashtagFeed />} />
+                    <Route path="/odeme/basarili" element={<PaymentSuccess />} />
+                    <Route path="/editor" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
                     <Route path="/yaz" element={<ProtectedRoute><Compose /></ProtectedRoute>} />
                     <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                 </Routes>

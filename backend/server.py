@@ -5,6 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 import os
+import re
 import uuid
 import logging
 import bcrypt
@@ -16,6 +17,12 @@ from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depend
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
+
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout,
+    CheckoutSessionRequest,
+)
+from emergentintegrations.llm.chat import LlmChat, UserMessage
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +53,13 @@ CATEGORY_IDS = {c["id"] for c in CATEGORIES}
 SESSION_DAYS = 7
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
+# Boost packages (server-side only — frontend cannot influence price)
+BOOST_PACKAGES = {
+    "boost_24h": {"amount": 25.0, "currency": "try", "hours": 24, "label": "24 Saat Manşete Sabit"},
+}
+
+HASHTAG_RE = re.compile(r"#([\wçğıöşüÇĞİÖŞÜ]{2,30})", re.UNICODE)
+
 
 # ---------------------------------------------------------------------------
 # Models
@@ -70,6 +84,29 @@ class WhisperCreate(BaseModel):
     category: str
     location: Optional[str] = Field(default=None, max_length=80)
     overheard_from: Optional[str] = Field(default=None, max_length=80)
+
+
+class SponsoredWhisperCreate(BaseModel):
+    content: str = Field(min_length=10, max_length=600)
+    category: str
+    sponsor_name: str = Field(min_length=2, max_length=80)
+    sponsor_url: Optional[str] = Field(default=None, max_length=200)
+    overheard_from: Optional[str] = Field(default=None, max_length=80)
+    location: Optional[str] = Field(default=None, max_length=80)
+
+
+class ReportBody(BaseModel):
+    reason: str = Field(min_length=3, max_length=200)
+
+
+class ModerateBody(BaseModel):
+    action: Literal["hide", "approve", "delete"]
+
+
+class BoostCheckoutBody(BaseModel):
+    whisper_id: str
+    package_id: str = "boost_24h"
+    origin_url: str
 
 
 class CommentCreate(BaseModel):
@@ -116,6 +153,68 @@ def iso(dt: datetime) -> str:
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def extract_hashtags(text: str) -> List[str]:
+    """Extract #tags from text, normalized lowercase, unique, preserve order."""
+    seen = set()
+    out = []
+    for m in HASHTAG_RE.finditer(text):
+        tag = m.group(1).lower()
+        if tag not in seen:
+            seen.add(tag)
+            out.append(tag)
+    return out
+
+
+async def moderate_content(text: str) -> dict:
+    """Use Claude Sonnet to classify content. Lenient: only block truly illegal/dangerous content.
+    Returns {"allowed": bool, "reason": str}. Falls back to allowed=True on any error.
+    """
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        return {"allowed": True, "reason": ""}
+    try:
+        system_msg = (
+            "You are a lenient content moderator for a Turkish rumor/gossip social platform. "
+            "Casual rumors, light political commentary, financial speculation, and everyday gossip MUST be ALLOWED. "
+            "ONLY flag content that is clearly illegal or dangerous: "
+            "1) child sexual content, 2) direct threats of violence against a named person, "
+            "3) doxxing (sharing private phone/address/ID of a specific real person), "
+            "4) explicit hate slurs targeting an ethnic/religious group. "
+            "Respond with STRICT JSON only: {\"allowed\": true|false, \"reason\": \"short reason in Turkish, empty if allowed\"}. "
+            "No markdown, no extra text."
+        )
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"mod-{uuid.uuid4().hex[:8]}",
+            system_message=system_msg,
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        response_text = await chat.send_message(UserMessage(text=text))
+        import json as _json
+        # Find JSON object in response
+        match = re.search(r"\{.*\}", response_text or "", re.DOTALL)
+        if not match:
+            return {"allowed": True, "reason": ""}
+        data = _json.loads(match.group(0))
+        return {"allowed": bool(data.get("allowed", True)), "reason": str(data.get("reason", ""))[:200]}
+    except Exception as e:
+        logging.warning(f"Moderation error (allowing by default): {e}")
+        return {"allowed": True, "reason": ""}
+
+
+async def create_notification(user_id: str, ntype: str, data: dict) -> None:
+    """Create an in-app notification. ntype: comment | follow | upvote_milestone | mention | moderation."""
+    if not user_id:
+        return
+    await db.notifications.insert_one({
+        "notification_id": new_id("n_"),
+        "user_id": user_id,
+        "type": ntype,
+        "data": data,
+        "read": False,
+        "created_at": iso(now_utc()),
+    })
 
 
 def public_user(doc: dict) -> dict:
@@ -327,12 +426,25 @@ async def serialize_whisper(w: dict, current_user: Optional[dict]) -> dict:
         if v:
             my_vote = v["value"]
     comment_count = await db.comments.count_documents({"whisper_id": w["whisper_id"]})
+
+    # Check boost validity
+    boost_expires_at = w.get("boost_expires_at")
+    is_boosted = False
+    if boost_expires_at:
+        be = boost_expires_at
+        if isinstance(be, str):
+            be = datetime.fromisoformat(be)
+        if be.tzinfo is None:
+            be = be.replace(tzinfo=timezone.utc)
+        is_boosted = be > now_utc()
+
     return {
         "whisper_id": w["whisper_id"],
         "content": w["content"],
         "category": w["category"],
         "location": w.get("location"),
         "overheard_from": w.get("overheard_from"),
+        "hashtags": w.get("hashtags", []),
         "author_id": w["user_id"],
         "author_name": w.get("author_name", "Anonim"),
         "author_picture": w.get("author_picture"),
@@ -341,6 +453,11 @@ async def serialize_whisper(w: dict, current_user: Optional[dict]) -> dict:
         "score": w.get("upvotes", 0) - w.get("downvotes", 0),
         "my_vote": my_vote,
         "comment_count": comment_count,
+        "is_boosted": is_boosted,
+        "is_sponsored": bool(w.get("is_sponsored", False)),
+        "sponsor_name": w.get("sponsor_name"),
+        "sponsor_url": w.get("sponsor_url"),
+        "moderation_status": w.get("moderation_status", "approved"),
         "created_at": w["created_at"],
     }
 
@@ -354,28 +471,41 @@ async def list_categories():
 async def list_whispers(
     request: Request,
     category: Optional[str] = Query(default=None),
+    hashtag: Optional[str] = Query(default=None),
     sort: Literal["new", "top", "trending"] = Query(default="new"),
     limit: int = Query(default=30, ge=1, le=100),
 ):
-    q = {}
+    q = {"moderation_status": {"$ne": "hidden"}}
     if category and category != "all":
         if category not in CATEGORY_IDS:
             raise HTTPException(status_code=400, detail="Geçersiz kategori")
         q["category"] = category
+    if hashtag:
+        q["hashtags"] = hashtag.lower().lstrip("#")
 
     cursor = db.whispers.find(q, {"_id": 0})
-    if sort == "new":
-        cursor = cursor.sort("created_at", -1)
-    else:
-        # for "top" and "trending" we'll sort in python by score (and recency for trending)
-        cursor = cursor.sort("created_at", -1)
+    cursor = cursor.sort("created_at", -1)
+    docs = await cursor.to_list(length=300)
 
-    docs = await cursor.to_list(length=200)
+    # Separate sponsored & boosted from organic — keep sponsored/boosted always on top
+    now = now_utc()
+
+    def is_active_boost(d):
+        be = d.get("boost_expires_at")
+        if not be:
+            return False
+        if isinstance(be, str):
+            be = datetime.fromisoformat(be)
+        if be.tzinfo is None:
+            be = be.replace(tzinfo=timezone.utc)
+        return be > now
+
+    pinned = [d for d in docs if d.get("is_sponsored") or is_active_boost(d)]
+    organic = [d for d in docs if not (d.get("is_sponsored") or is_active_boost(d))]
 
     if sort == "top":
-        docs.sort(key=lambda d: (d.get("upvotes", 0) - d.get("downvotes", 0)), reverse=True)
+        organic.sort(key=lambda d: (d.get("upvotes", 0) - d.get("downvotes", 0)), reverse=True)
     elif sort == "trending":
-        # weighted: score - hours_since/4
         def trending_key(d):
             score = d.get("upvotes", 0) - d.get("downvotes", 0)
             created = d["created_at"]
@@ -387,7 +517,10 @@ async def list_whispers(
                 created_dt = created_dt.replace(tzinfo=timezone.utc)
             hours = (now_utc() - created_dt).total_seconds() / 3600.0
             return score - hours / 6.0
-        docs.sort(key=trending_key, reverse=True)
+        organic.sort(key=trending_key, reverse=True)
+    # else "new": already sorted by created_at desc
+
+    docs = pinned + organic
 
     docs = docs[:limit]
     current = await get_optional_user(request)
@@ -399,20 +532,40 @@ async def create_whisper(body: WhisperCreate, user=Depends(get_current_user)):
     if body.category not in CATEGORY_IDS:
         raise HTTPException(status_code=400, detail="Geçersiz kategori")
 
+    content = body.content.strip()
+    hashtags = extract_hashtags(content)
+    moderation = await moderate_content(content)
+    moderation_status = "approved" if moderation["allowed"] else "hidden"
+
     doc = {
         "whisper_id": new_id("w_"),
         "user_id": user["user_id"],
         "author_name": user.get("name", "Anonim"),
         "author_picture": user.get("picture"),
-        "content": body.content.strip(),
+        "content": content,
         "category": body.category,
         "location": (body.location or "").strip() or None,
         "overheard_from": (body.overheard_from or "").strip() or None,
+        "hashtags": hashtags,
         "upvotes": 0,
         "downvotes": 0,
+        "is_sponsored": False,
+        "is_boosted": False,
+        "boost_expires_at": None,
+        "moderation_status": moderation_status,
+        "moderation_reason": moderation.get("reason", ""),
         "created_at": iso(now_utc()),
     }
     await db.whispers.insert_one(doc)
+
+    if moderation_status == "hidden":
+        # Notify the author that their post was hidden
+        await create_notification(
+            user["user_id"],
+            "moderation",
+            {"whisper_id": doc["whisper_id"], "reason": moderation.get("reason") or "İçerik kurallarına uygun değil."},
+        )
+
     return await serialize_whisper(doc, user)
 
 
@@ -522,6 +675,18 @@ async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_
     }
     await db.comments.insert_one(doc)
     doc.pop("_id", None)
+    # Notify whisper author (if not self)
+    if w["user_id"] != user["user_id"]:
+        await create_notification(
+            w["user_id"],
+            "comment",
+            {
+                "whisper_id": whisper_id,
+                "from_user_id": user["user_id"],
+                "from_name": user.get("name", "Anonim"),
+                "preview": body.content.strip()[:120],
+            },
+        )
     return doc
 
 
@@ -590,6 +755,12 @@ async def follow_user(user_id: str, user=Depends(get_current_user)):
             "created_at": iso(now_utc()),
         })
         is_following = True
+        # Notify followed user
+        await create_notification(
+            user_id,
+            "follow",
+            {"from_user_id": user["user_id"], "from_name": user.get("name", "Anonim")},
+        )
 
     follower_count = await db.follows.count_documents({"followee_id": user_id})
     return {"is_following": is_following, "follower_count": follower_count}
@@ -628,6 +799,291 @@ async def my_stats(user=Depends(get_current_user)):
 @api_router.get("/")
 async def root():
     return {"app": "Fısıltı Gazetesi", "status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+@api_router.get("/notifications")
+async def list_notifications(user=Depends(get_current_user), limit: int = Query(default=30, ge=1, le=100)):
+    cursor = db.notifications.find({"user_id": user["user_id"]}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = await cursor.to_list(length=limit)
+    unread = await db.notifications.count_documents({"user_id": user["user_id"], "read": False})
+    return {"items": items, "unread_count": unread}
+
+
+@api_router.post("/notifications/read")
+async def mark_notifications_read(user=Depends(get_current_user)):
+    await db.notifications.update_many(
+        {"user_id": user["user_id"], "read": False},
+        {"$set": {"read": True}},
+    )
+    return {"ok": True}
+
+
+@api_router.get("/notifications/unread_count")
+async def notifications_unread_count(user=Depends(get_current_user)):
+    count = await db.notifications.count_documents({"user_id": user["user_id"], "read": False})
+    return {"unread_count": count}
+
+
+# ---------------------------------------------------------------------------
+# Hashtags
+# ---------------------------------------------------------------------------
+@api_router.get("/hashtags/trending")
+async def trending_hashtags(limit: int = Query(default=10, ge=1, le=50)):
+    # last 7 days
+    cutoff = iso(now_utc() - timedelta(days=7))
+    pipeline = [
+        {"$match": {"created_at": {"$gte": cutoff}, "moderation_status": {"$ne": "hidden"}, "hashtags": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$hashtags"},
+        {"$group": {"_id": "$hashtags", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": limit},
+    ]
+    rows = await db.whispers.aggregate(pipeline).to_list(length=limit)
+    return [{"hashtag": r["_id"], "count": r["count"]} for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+@api_router.post("/whispers/{whisper_id}/report")
+async def report_whisper(whisper_id: str, body: ReportBody, user=Depends(get_current_user)):
+    w = await db.whispers.find_one({"whisper_id": whisper_id})
+    if not w:
+        raise HTTPException(status_code=404, detail="Fısıltı bulunamadı")
+    # Avoid duplicate reports from same user
+    existing = await db.reports.find_one({"whisper_id": whisper_id, "reporter_id": user["user_id"]})
+    if existing:
+        return {"ok": True, "duplicate": True}
+    await db.reports.insert_one({
+        "report_id": new_id("r_"),
+        "whisper_id": whisper_id,
+        "reporter_id": user["user_id"],
+        "reporter_name": user.get("name", "Anonim"),
+        "reason": body.reason.strip(),
+        "status": "open",
+        "created_at": iso(now_utc()),
+    })
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Admin (Editör)
+# ---------------------------------------------------------------------------
+def require_admin(user=Depends(get_current_user)):
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Sadece Editör erişebilir")
+    return user
+
+
+@api_router.get("/admin/reports")
+async def admin_list_reports(user=Depends(require_admin), status: str = Query(default="open")):
+    q = {"status": status} if status != "all" else {}
+    cursor = db.reports.find(q, {"_id": 0}).sort("created_at", -1).limit(100)
+    items = await cursor.to_list(length=100)
+    # Enrich with whisper preview
+    enriched = []
+    for r in items:
+        w = await db.whispers.find_one({"whisper_id": r["whisper_id"]}, {"_id": 0, "content": 1, "user_id": 1, "author_name": 1, "moderation_status": 1, "category": 1})
+        r["whisper"] = w
+        enriched.append(r)
+    return enriched
+
+
+@api_router.post("/admin/whispers/{whisper_id}/moderate")
+async def admin_moderate_whisper(whisper_id: str, body: ModerateBody, user=Depends(require_admin)):
+    w = await db.whispers.find_one({"whisper_id": whisper_id})
+    if not w:
+        raise HTTPException(status_code=404, detail="Fısıltı bulunamadı")
+    if body.action == "delete":
+        await db.whispers.delete_one({"whisper_id": whisper_id})
+        await db.votes.delete_many({"whisper_id": whisper_id})
+        await db.comments.delete_many({"whisper_id": whisper_id})
+        await db.reports.update_many({"whisper_id": whisper_id}, {"$set": {"status": "resolved"}})
+        return {"ok": True, "action": "deleted"}
+    new_status = "hidden" if body.action == "hide" else "approved"
+    await db.whispers.update_one({"whisper_id": whisper_id}, {"$set": {"moderation_status": new_status}})
+    await db.reports.update_many({"whisper_id": whisper_id}, {"$set": {"status": "resolved"}})
+    return {"ok": True, "action": body.action, "moderation_status": new_status}
+
+
+@api_router.post("/admin/whispers/sponsored")
+async def admin_create_sponsored(body: SponsoredWhisperCreate, user=Depends(require_admin)):
+    if body.category not in CATEGORY_IDS:
+        raise HTTPException(status_code=400, detail="Geçersiz kategori")
+    content = body.content.strip()
+    doc = {
+        "whisper_id": new_id("w_"),
+        "user_id": user["user_id"],
+        "author_name": body.sponsor_name.strip(),
+        "author_picture": None,
+        "content": content,
+        "category": body.category,
+        "location": (body.location or "").strip() or None,
+        "overheard_from": (body.overheard_from or "").strip() or None,
+        "hashtags": extract_hashtags(content),
+        "upvotes": 0,
+        "downvotes": 0,
+        "is_sponsored": True,
+        "sponsor_name": body.sponsor_name.strip(),
+        "sponsor_url": (body.sponsor_url or "").strip() or None,
+        "is_boosted": False,
+        "boost_expires_at": None,
+        "moderation_status": "approved",
+        "created_at": iso(now_utc()),
+    }
+    await db.whispers.insert_one(doc)
+    return await serialize_whisper(doc, user)
+
+
+# ---------------------------------------------------------------------------
+# Boost / Stripe Checkout
+# ---------------------------------------------------------------------------
+@api_router.get("/boost/packages")
+async def boost_packages():
+    return [{"id": k, **v} for k, v in BOOST_PACKAGES.items()]
+
+
+@api_router.post("/boost/checkout")
+async def boost_checkout(body: BoostCheckoutBody, http_request: Request, user=Depends(get_current_user)):
+    if body.package_id not in BOOST_PACKAGES:
+        raise HTTPException(status_code=400, detail="Geçersiz paket")
+    pkg = BOOST_PACKAGES[body.package_id]
+
+    w = await db.whispers.find_one({"whisper_id": body.whisper_id})
+    if not w:
+        raise HTTPException(status_code=404, detail="Fısıltı bulunamadı")
+    if w["user_id"] != user["user_id"]:
+        raise HTTPException(status_code=403, detail="Sadece kendi fısıltını boost edebilirsin")
+
+    api_key = os.environ.get("STRIPE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Ödeme servisi yapılandırılmamış")
+
+    origin = body.origin_url.rstrip("/")
+    success_url = f"{origin}/odeme/basarili?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/fisilti/{body.whisper_id}"
+
+    host_url = str(http_request.base_url)
+    webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+
+    metadata = {
+        "kind": "boost",
+        "user_id": user["user_id"],
+        "whisper_id": body.whisper_id,
+        "package_id": body.package_id,
+        "hours": str(pkg["hours"]),
+    }
+    req = CheckoutSessionRequest(
+        amount=float(pkg["amount"]),
+        currency=pkg["currency"],
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata=metadata,
+    )
+    session = await stripe_checkout.create_checkout_session(req)
+
+    await db.payment_transactions.insert_one({
+        "transaction_id": new_id("pt_"),
+        "session_id": session.session_id,
+        "user_id": user["user_id"],
+        "whisper_id": body.whisper_id,
+        "package_id": body.package_id,
+        "amount": float(pkg["amount"]),
+        "currency": pkg["currency"],
+        "payment_status": "pending",
+        "status": "initiated",
+        "metadata": metadata,
+        "boost_applied": False,
+        "created_at": iso(now_utc()),
+    })
+    return {"url": session.url, "session_id": session.session_id}
+
+
+@api_router.get("/boost/status/{session_id}")
+async def boost_status(session_id: str, http_request: Request):
+    tx = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not tx:
+        raise HTTPException(status_code=404, detail="İşlem bulunamadı")
+
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(http_request.base_url)
+    webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    status = await stripe_checkout.get_checkout_status(session_id)
+
+    # Update transaction (idempotent — only apply boost once)
+    update = {
+        "payment_status": status.payment_status,
+        "status": status.status,
+        "updated_at": iso(now_utc()),
+    }
+    await db.payment_transactions.update_one({"session_id": session_id}, {"$set": update})
+
+    if status.payment_status == "paid" and not tx.get("boost_applied"):
+        hours = int(tx.get("metadata", {}).get("hours", "24"))
+        expires = iso(now_utc() + timedelta(hours=hours))
+        await db.whispers.update_one(
+            {"whisper_id": tx["whisper_id"]},
+            {"$set": {"is_boosted": True, "boost_expires_at": expires}},
+        )
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"boost_applied": True, "boost_expires_at": expires}},
+        )
+
+    return {
+        "session_id": session_id,
+        "payment_status": status.payment_status,
+        "status": status.status,
+        "amount_total": status.amount_total,
+        "currency": status.currency,
+        "whisper_id": tx["whisper_id"],
+    }
+
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    api_key = os.environ.get("STRIPE_API_KEY")
+    host_url = str(request.base_url)
+    webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    body = await request.body()
+    signature = request.headers.get("Stripe-Signature", "")
+    try:
+        event = await stripe_checkout.handle_webhook(body, signature)
+    except Exception as e:
+        logging.warning(f"Stripe webhook verification failed: {e}")
+        raise HTTPException(status_code=400, detail="invalid webhook")
+
+    session_id = getattr(event, "session_id", None)
+    if not session_id:
+        return {"ok": True}
+
+    tx = await db.payment_transactions.find_one({"session_id": session_id})
+    if not tx:
+        return {"ok": True}
+
+    await db.payment_transactions.update_one(
+        {"session_id": session_id},
+        {"$set": {"payment_status": event.payment_status, "updated_at": iso(now_utc())}},
+    )
+
+    if event.payment_status == "paid" and not tx.get("boost_applied"):
+        hours = int(tx.get("metadata", {}).get("hours", "24"))
+        expires = iso(now_utc() + timedelta(hours=hours))
+        await db.whispers.update_one(
+            {"whisper_id": tx["whisper_id"]},
+            {"$set": {"is_boosted": True, "boost_expires_at": expires}},
+        )
+        await db.payment_transactions.update_one(
+            {"session_id": session_id},
+            {"$set": {"boost_applied": True, "boost_expires_at": expires}},
+        )
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -684,10 +1140,16 @@ async def on_startup():
     await db.whispers.create_index("created_at")
     await db.whispers.create_index("category")
     await db.whispers.create_index("user_id")
+    await db.whispers.create_index("hashtags")
     await db.votes.create_index([("whisper_id", 1), ("user_id", 1)], unique=True)
     await db.comments.create_index("whisper_id")
     await db.follows.create_index([("follower_id", 1), ("followee_id", 1)], unique=True)
     await db.follows.create_index("followee_id")
+    await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
+    await db.notifications.create_index([("user_id", 1), ("read", 1)])
+    await db.reports.create_index([("whisper_id", 1), ("reporter_id", 1)])
+    await db.reports.create_index("status")
+    await db.payment_transactions.create_index("session_id", unique=True)
     await seed_admin()
 
 
