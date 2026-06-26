@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { CATEGORIES } from "@/constants/categories";
 import WhisperCard from "@/components/WhisperCard";
@@ -121,10 +122,10 @@ export default function Home() {
                                 <ul className="space-y-3">
                                     {restWhispers.slice(0, 5).map((w) => (
                                         <li key={w.whisper_id} className="font-mono text-xs leading-snug">
-                                            <a href={`/fisilti/${w.whisper_id}`} className="hover:text-stamp transition-colors block" data-testid={`sidebar-link-${w.whisper_id}`}>
+                                            <Link to={`/fisilti/${w.whisper_id}`} className="hover:text-stamp transition-colors block" data-testid={`sidebar-link-${w.whisper_id}`}>
                                                 <span className="text-stamp uppercase tracking-widest mr-1">[{w.category}]</span>
                                                 {w.content.slice(0, 110)}{w.content.length > 110 ? "..." : ""}
-                                            </a>
+                                            </Link>
                                         </li>
                                     ))}
                                 </ul>

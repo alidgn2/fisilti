@@ -1,0 +1,26 @@
+{
+  "summary": "Bug-fix verification (frontend only): Home sidebar 'Mahalleden Mırıltılar' links now use react-router <Link> and perform SPA navigation to /fisilti/<id> without a full page reload. Verified using a window sentinel value that survives the click. WhisperDetail page renders whisper body, vote controls, 'Geri' back link and 'Okur Mektupları' comments form correctly. All adjacent internal navigation also tested: whisper card content link, masthead logo, masthead 'Fısıltı Yaz' (logged in), whisper author link — all are SPA navigations.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Home (anonymous)", "issues": ["GET /api/auth/me still emits two 401 console errors on initial anonymous load — carried over from iteration_1; cosmetic only."]}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_1.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Home.jsx now correctly imports Link from react-router-dom and uses <Link to={`/fisilti/${w.whisper_id}`}> for the sidebar — no remaining <a href> for internal routes in Home.jsx.",
+    "WhisperCard.jsx already uses <Link> for content body, comments and author. The author-link onClick stopPropagation is defensive but no longer strictly needed because the parent is also a <Link> (not a click handler) — minor cleanup possibility, not a bug.",
+    "Masthead.jsx uses <Link> for logo/profile/login/register and useNavigate() for compose/logout — consistent and correct."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (not tested this iteration)", "frontend": "100%"},
+  "test_credentials": "muhabir1@fisilti.com / Test1234! (verified working for login + compose nav test).",
+  "seed_data_creation": "No new seed data needed — preview DB already had >=6 whispers (kahvehane/berber/etc.) seeded in iteration_1, so sidebar 'Mahalleden Mırıltılar' was populated.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "SPA-navigation verification trick used: before clicking, set `window.__sentinel = 'x'` then click the <Link>; if the value survives, no full reload occurred. Sidebar testids are `sidebar-link-<whisper_id>`. The detail page uses `Geri` text (not a data-testid) for the back link — consider adding data-testid='whisper-detail-back-link' if more granular detail-page tests are needed.",
+  "rca of the issue": "Original bug: Home.jsx 'Mahalleden Mırıltılar' sidebar used <a href={`/fisilti/${id}`}> which triggers a full document load. In the Emergent preview iframe this caused visible reloads / iframe-host conflicts. Fix: replaced <a> with react-router <Link to={...}> and added `import { Link } from 'react-router-dom'`. Verification: post-click `window.__sentinel` value persisted, confirming SPA navigation; WhisperDetail page rendered content + comments form correctly."
+}
