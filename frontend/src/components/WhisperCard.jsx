@@ -72,11 +72,26 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
                 </span>
             </div>
 
-            <Link to={`/fisilti/${w.whisper_id}`} className="block group" data-testid={`whisper-link-${w.whisper_id}`}>
+            <div
+                role="link"
+                tabIndex={0}
+                onClick={(e) => {
+                    // Don't navigate when clicking inside a hashtag link
+                    if (e.target.closest("a")) return;
+                    navigate(`/fisilti/${w.whisper_id}`);
+                }}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        navigate(`/fisilti/${w.whisper_id}`);
+                    }
+                }}
+                className="block group cursor-pointer"
+                data-testid={`whisper-link-${w.whisper_id}`}
+            >
                 <p className={`font-mono leading-relaxed text-[15px] text-ink ${compact ? "" : "dropcap"}`}>
                     <HashtagText>{w.content}</HashtagText>
                 </p>
-            </Link>
+            </div>
 
             <div className="mt-4 flex items-center justify-between gap-3 flex-wrap text-[12px] font-mono uppercase tracking-wider text-inkmuted">
                 <div className="flex items-center gap-3 flex-wrap">
