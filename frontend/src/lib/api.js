@@ -8,6 +8,53 @@ export const api = axios.create({
     withCredentials: true,
 });
 
+const TOKEN_KEY = "fisilti_session_token";
+
+export function getSessionToken() {
+    try {
+        return window.localStorage.getItem(TOKEN_KEY);
+    } catch {
+        return null;
+    }
+}
+
+export function setSessionToken(token) {
+    try {
+        if (token) {
+            window.localStorage.setItem(TOKEN_KEY, token);
+        }
+    } catch {
+        /* noop */
+    }
+}
+
+export function clearSessionToken() {
+    try {
+        window.localStorage.removeItem(TOKEN_KEY);
+    } catch {
+        /* noop */
+    }
+}
+
+api.interceptors.request.use((config) => {
+    const token = getSessionToken();
+    if (token) {
+        config.headers = config.headers || {};
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error?.response?.status === 401) {
+            clearSessionToken();
+        }
+        return Promise.reject(error);
+    }
+);
+
 export function formatApiError(err) {
     const detail = err?.response?.data?.detail;
     if (!detail) return err?.message || "Bir hata oluştu";

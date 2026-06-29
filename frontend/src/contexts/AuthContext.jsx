@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { api, formatApiError } from "@/lib/api";
+import { api, clearSessionToken, formatApiError, setSessionToken } from "@/lib/api";
 
 const AuthContext = createContext(null);
 
@@ -29,12 +29,14 @@ export function AuthProvider({ children }) {
 
     const login = async (email, password) => {
         const { data } = await api.post("/auth/login", { email, password });
+        setSessionToken(data.session_token);
         setUser(data.user);
         return data.user;
     };
 
     const register = async (email, password, name) => {
         const { data } = await api.post("/auth/register", { email, password, name });
+        setSessionToken(data.session_token);
         setUser(data.user);
         return data.user;
     };
@@ -45,6 +47,7 @@ export function AuthProvider({ children }) {
         } catch {
             /* noop */
         }
+        clearSessionToken();
         setUser(null);
     };
 
