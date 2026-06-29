@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { PenLine, LogIn, UserCircle2, LogOut, Newspaper, ShieldCheck, Settings } from "lucide-react";
+import { PenLine, LogIn, UserCircle2, LogOut, Newspaper, ShieldCheck, Settings, Search } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 
 function todayTr() {
@@ -46,6 +46,10 @@ export default function Masthead() {
                                     <PenLine size={14} />
                                     Fısıltı Yaz
                                 </button>
+                                <Link to="/muhabirler" className="btn-outline-ink flex items-center gap-2" data-testid="masthead-user-search-link">
+                                    <Search size={14} />
+                                    Muhabir Bul
+                                </Link>
                                 <NotificationBell />
                                 {user.role === "admin" && (
                                     <Link to="/editor" className="btn-outline-ink flex items-center gap-2" data-testid="masthead-admin-link">

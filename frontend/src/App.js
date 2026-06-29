@@ -10,6 +10,7 @@ import Compose from "@/pages/Compose";
 import WhisperDetail from "@/pages/WhisperDetail";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
+import UserSearch from "@/pages/UserSearch";
 import PublicProfile from "@/pages/PublicProfile";
 import HashtagFeed from "@/pages/HashtagFeed";
 import PaymentSuccess from "@/pages/PaymentSuccess";
@@ -51,6 +52,7 @@ function AppShell() {
                     <Route path="/yaz" element={<ProtectedRoute><Compose /></ProtectedRoute>} />
                     <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/ayarlar" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                    <Route path="/muhabirler" element={<ProtectedRoute><UserSearch /></ProtectedRoute>} />
                 </Routes>
             </main>
             <Footer />

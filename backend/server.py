@@ -639,6 +639,51 @@ async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_
 # ---------------------------------------------------------------------------
 # Profile
 # ---------------------------------------------------------------------------
+@api_router.get("/users/search")
+async def search_users(
+    q: str = Query(default="", max_length=60),
+    limit: int = Query(default=20, ge=1, le=50),
+    user=Depends(get_current_user),
+):
+    term = q.strip()
+    if len(term) < 2:
+        return []
+
+    pattern = re.escape(term)
+    cursor = db.users.find(
+        {
+            "user_id": {"$ne": user["user_id"]},
+            "$or": [
+                {"name": {"$regex": pattern, "$options": "i"}},
+                {"user_id": {"$regex": pattern, "$options": "i"}},
+            ],
+        },
+        {"_id": 0, "password_hash": 0, "email": 0},
+    ).limit(limit)
+    docs = await cursor.to_list(length=limit)
+
+    follows = await db.follows.find(
+        {"follower_id": user["user_id"]},
+        {"_id": 0, "followee_id": 1},
+    ).to_list(length=1000)
+    following_ids = {f["followee_id"] for f in follows}
+
+    results = []
+    for doc in docs:
+        uid = doc["user_id"]
+        results.append({
+            "user_id": uid,
+            "name": doc.get("name", "Anonim"),
+            "picture": doc.get("picture"),
+            "is_following": uid in following_ids,
+            "stats": {
+                "follower_count": await db.follows.count_documents({"followee_id": uid}),
+                "whisper_count": await db.whispers.count_documents({"user_id": uid}),
+            },
+        })
+    return results
+
+
 @api_router.get("/users/{user_id}")
 async def get_user_public(user_id: str, request: Request):
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0, "email": 0})
