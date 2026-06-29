@@ -32,6 +32,15 @@ function NotificationItem({ n }) {
             </Link>
         );
     }
+    if (n.type === "message") {
+        return (
+            <Link to={`/mesajlar/${data.from_user_id}`} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
+                <p className="font-mono text-[11px] uppercase tracking-widest text-stamp">Yeni mesaj</p>
+                <p className="font-serif text-sm mt-1"><strong>{data.from_name}</strong>: {data.preview}</p>
+                <p className="font-mono text-[10px] uppercase tracking-widest text-inkmuted mt-1">{ago(n.created_at)}</p>
+            </Link>
+        );
+    }
     if (n.type === "moderation") {
         return (
             <div className="block -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>

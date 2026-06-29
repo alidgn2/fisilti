@@ -11,6 +11,7 @@ import WhisperDetail from "@/pages/WhisperDetail";
 import Profile from "@/pages/Profile";
 import Settings from "@/pages/Settings";
 import UserSearch from "@/pages/UserSearch";
+import Messages from "@/pages/Messages";
 import PublicProfile from "@/pages/PublicProfile";
 import HashtagFeed from "@/pages/HashtagFeed";
 import PaymentSuccess from "@/pages/PaymentSuccess";
@@ -53,6 +54,8 @@ function AppShell() {
                     <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
                     <Route path="/ayarlar" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
                     <Route path="/muhabirler" element={<ProtectedRoute><UserSearch /></ProtectedRoute>} />
+                    <Route path="/mesajlar" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+                    <Route path="/mesajlar/:userId" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
                 </Routes>
             </main>
             <Footer />

@@ -105,6 +105,10 @@ class CommentCreate(BaseModel):
     content: str = Field(min_length=1, max_length=400)
 
 
+class MessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=1000)
+
+
 class VoteBody(BaseModel):
     value: Literal[1, -1]
 
@@ -202,6 +206,20 @@ def public_user(doc: dict) -> dict:
         "auth_provider": doc.get("auth_provider", "email"),
         "created_at": doc.get("created_at"),
     }
+
+
+def public_user_brief(doc: Optional[dict]) -> Optional[dict]:
+    if not doc:
+        return None
+    return {
+        "user_id": doc["user_id"],
+        "name": doc.get("name", "Anonim"),
+        "picture": doc.get("picture"),
+    }
+
+
+def conversation_id_for(user_a: str, user_b: str) -> str:
+    return "dm_" + "_".join(sorted([user_a, user_b]))
 
 
 def validate_profile_picture(value: Optional[str]) -> Optional[str]:
@@ -844,6 +862,99 @@ async def notifications_unread_count(user=Depends(get_current_user)):
 
 
 # ---------------------------------------------------------------------------
+# Direct Messages
+# ---------------------------------------------------------------------------
+@api_router.get("/messages/conversations")
+async def list_conversations(user=Depends(get_current_user), limit: int = Query(default=50, ge=1, le=100)):
+    uid = user["user_id"]
+    cursor = db.messages.find(
+        {"$or": [{"sender_id": uid}, {"recipient_id": uid}]},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(500)
+    messages = await cursor.to_list(length=500)
+
+    seen = set()
+    conversations = []
+    for message in messages:
+        cid = message["conversation_id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        other_id = message["recipient_id"] if message["sender_id"] == uid else message["sender_id"]
+        other = await db.users.find_one({"user_id": other_id}, {"_id": 0, "password_hash": 0, "email": 0})
+        unread = await db.messages.count_documents({
+            "conversation_id": cid,
+            "recipient_id": uid,
+            "read": False,
+        })
+        conversations.append({
+            "conversation_id": cid,
+            "user": public_user_brief(other),
+            "last_message": message,
+            "unread": unread,
+        })
+        if len(conversations) >= limit:
+            break
+    return conversations
+
+
+@api_router.get("/messages/{user_id}")
+async def list_messages(user_id: str, user=Depends(get_current_user), limit: int = Query(default=100, ge=1, le=200)):
+    if user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Kendine mesaj gönderemezsin")
+    other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0, "email": 0})
+    if not other:
+        raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+
+    cid = conversation_id_for(user["user_id"], user_id)
+    cursor = db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    docs = await cursor.to_list(length=limit)
+    docs.reverse()
+    await db.messages.update_many(
+        {"conversation_id": cid, "recipient_id": user["user_id"], "read": False},
+        {"$set": {"read": True}},
+    )
+    return {"user": public_user_brief(other), "messages": docs}
+
+
+@api_router.post("/messages/{user_id}")
+async def send_message(user_id: str, body: MessageCreate, user=Depends(get_current_user)):
+    if user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Kendine mesaj gönderemezsin")
+    other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
+    if not other:
+        raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+
+    content = body.content.strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Mesaj boş olamaz")
+
+    doc = {
+        "message_id": new_id("m_"),
+        "conversation_id": conversation_id_for(user["user_id"], user_id),
+        "sender_id": user["user_id"],
+        "recipient_id": user_id,
+        "sender_name": user.get("name", "Anonim"),
+        "sender_picture": user.get("picture"),
+        "content": content,
+        "read": False,
+        "created_at": iso(now_utc()),
+    }
+    await db.messages.insert_one(doc)
+    doc.pop("_id", None)
+    await create_notification(
+        user_id,
+        "message",
+        {
+            "from_user_id": user["user_id"],
+            "from_name": user.get("name", "Anonim"),
+            "preview": content[:120],
+        },
+    )
+    return doc
+
+
+# ---------------------------------------------------------------------------
 # Hashtags
 # ---------------------------------------------------------------------------
 @api_router.get("/hashtags/trending")
@@ -1174,6 +1285,9 @@ async def on_startup():
     await db.follows.create_index("followee_id")
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index([("user_id", 1), ("read", 1)])
+    await db.messages.create_index([("conversation_id", 1), ("created_at", -1)])
+    await db.messages.create_index([("sender_id", 1), ("created_at", -1)])
+    await db.messages.create_index([("recipient_id", 1), ("created_at", -1)])
     await db.reports.create_index([("whisper_id", 1), ("reporter_id", 1)])
     await db.reports.create_index("status")
     await db.payment_transactions.create_index("session_id", unique=True)

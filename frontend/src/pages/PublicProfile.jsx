@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { ArrowLeft, UserPlus, UserMinus } from "lucide-react";
+import { ArrowLeft, UserPlus, UserMinus, MessageCircle } from "lucide-react";
 
 export default function PublicProfile() {
     const { userId } = useParams();
@@ -121,7 +121,10 @@ export default function PublicProfile() {
             </div>
 
             {!profile.is_self && (
-                <div className="mt-6 flex justify-end">
+                <div className="mt-6 flex justify-end gap-3 flex-wrap">
+                    <Link to={`/mesajlar/${profile.user_id}`} className="btn-outline-ink flex items-center gap-2" data-testid="public-profile-message-link">
+                        <MessageCircle size={14} /> Mesaj Gönder
+                    </Link>
                     <button
                         onClick={toggleFollow}
                         disabled={followBusy}
