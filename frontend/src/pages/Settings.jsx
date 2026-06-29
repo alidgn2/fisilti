@@ -124,11 +124,6 @@ export default function Settings() {
                             />
                         </div>
 
-                        <div className="border border-dashed border-ink/40 p-4">
-                            <p className="font-mono text-[10px] uppercase tracking-widest text-inkmuted">Yayın Kuralı</p>
-                            <p className="font-serif text-sm italic mt-1">Fısıltılarda görsel yok; sadece metin, kategori, konum ve etiket var.</p>
-                        </div>
-
                         <button type="submit" disabled={busy} className="btn-ink flex items-center gap-2" data-testid="settings-save-btn">
                             <Save size={14} /> {busy ? "Kaydediliyor..." : "Kaydet"}
                         </button>
