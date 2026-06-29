@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { CATEGORIES } from "@/constants/categories";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
-import { Flame, Clock, Trophy, Newspaper, Users } from "lucide-react";
+import { Flame, Clock, Trophy, Newspaper, Users, LogIn } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const SORTS = [
@@ -24,11 +24,11 @@ export default function Home() {
     const load = useCallback(async () => {
         setLoading(true);
         try {
+            if (!user) {
+                setWhispers([]);
+                return;
+            }
             if (sort === "following") {
-                if (!user) {
-                    setWhispers([]);
-                    return;
-                }
                 const { data } = await api.get("/whispers/following", { params: { limit: 60 } });
                 setWhispers(data);
             } else {
@@ -47,6 +47,10 @@ export default function Home() {
     // Top whispers for sidebar
     const headline = whispers[0];
     const restWhispers = whispers.slice(1);
+
+    if (!user) {
+        return <WelcomeLanding />;
+    }
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
@@ -148,6 +152,55 @@ export default function Home() {
                 </>
             )}
         </div>
+    );
+}
+
+function WelcomeLanding() {
+    return (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 relative z-10" data-testid="welcome-landing">
+            <section className="min-h-[64vh] border-y-4 border-double border-ink py-10 sm:py-14">
+                <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-10 lg:gap-14 items-center">
+                    <div>
+                        <p className="font-mono text-[11px] uppercase tracking-[0.45em] text-stamp mb-4">
+                            MAHALLE AJANSI - SADECE SÖYLENTİ
+                        </p>
+                        <h1 className="font-masthead text-5xl sm:text-7xl lg:text-8xl font-black leading-none">
+                            Fısıltı Gazetesi
+                        </h1>
+                        <p className="mt-5 max-w-2xl font-serif text-xl sm:text-2xl italic text-ink/80">
+                            Kahvehaneden, berberden, taksiden halkın kulağına çalınanlar burada toplanır.
+                        </p>
+
+                        <div className="mt-8 flex flex-wrap gap-3">
+                            <Link to="/kayit" className="btn-ink inline-flex items-center gap-2" data-testid="welcome-register-link">
+                                <Newspaper size={16} /> Muhabir Ol
+                            </Link>
+                            <Link to="/giris" className="btn-outline-ink inline-flex items-center gap-2" data-testid="welcome-login-link">
+                                <LogIn size={16} /> Giriş Yap
+                            </Link>
+                        </div>
+                    </div>
+
+                    <div className="border-l-0 lg:border-l-2 lg:border-dashed border-ink/40 lg:pl-10">
+                        <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-stamp mb-3">Bugünün Manşetleri</p>
+                        <div className="space-y-5">
+                            <LandingHeadline category="Kahvehane" title="Masadaki sessizlik bile haber olur." />
+                            <LandingHeadline category="Taksi" title="Yol kısa, dedikodu uzun." />
+                            <LandingHeadline category="Berber" title="Makas çalışır, mahalle konuşur." />
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    );
+}
+
+function LandingHeadline({ category, title }) {
+    return (
+        <article className="border-b-2 border-ink pb-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.35em] text-stamp">{category}</p>
+            <h2 className="font-masthead text-2xl sm:text-3xl font-black mt-1">{title}</h2>
+        </article>
     );
 }
 
