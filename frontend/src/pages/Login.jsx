@@ -4,10 +4,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 
-// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
 function startGoogleLogin() {
+    const googleAuthUrl = process.env.REACT_APP_GOOGLE_AUTH_URL;
+    if (!googleAuthUrl) return;
     const redirectUrl = window.location.origin + "/auth/callback";
-    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
+    window.location.href = `${googleAuthUrl}?redirect=${encodeURIComponent(redirectUrl)}`;
 }
 
 export default function Login() {
@@ -79,6 +80,7 @@ export default function Login() {
                 <button
                     type="button"
                     onClick={startGoogleLogin}
+                    disabled={!process.env.REACT_APP_GOOGLE_AUTH_URL}
                     className="btn-outline-ink w-full flex items-center justify-center gap-2"
                     data-testid="login-google-btn"
                 >

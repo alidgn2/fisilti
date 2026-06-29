@@ -9,7 +9,7 @@ import re
 import uuid
 import logging
 import bcrypt
-import httpx
+import stripe
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
@@ -18,19 +18,12 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
-from emergentintegrations.payments.stripe.checkout import (
-    StripeCheckout,
-    CheckoutSessionRequest,
-)
-from emergentintegrations.llm.chat import LlmChat, UserMessage
-
-
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
-mongo_url = os.environ['MONGO_URL']
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+db = client[os.environ.get('DB_NAME', 'fisilti')]
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +44,6 @@ CATEGORIES = [
 CATEGORY_IDS = {c["id"] for c in CATEGORIES}
 
 SESSION_DAYS = 7
-EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 # Boost packages (server-side only — frontend cannot influence price)
 BOOST_PACKAGES = {
@@ -168,39 +160,17 @@ def extract_hashtags(text: str) -> List[str]:
 
 
 async def moderate_content(text: str) -> dict:
-    """Use Claude Sonnet to classify content. Lenient: only block truly illegal/dangerous content.
-    Returns {"allowed": bool, "reason": str}. Falls back to allowed=True on any error.
-    """
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        return {"allowed": True, "reason": ""}
-    try:
-        system_msg = (
-            "You are a lenient content moderator for a Turkish rumor/gossip social platform. "
-            "Casual rumors, light political commentary, financial speculation, and everyday gossip MUST be ALLOWED. "
-            "ONLY flag content that is clearly illegal or dangerous: "
-            "1) child sexual content, 2) direct threats of violence against a named person, "
-            "3) doxxing (sharing private phone/address/ID of a specific real person), "
-            "4) explicit hate slurs targeting an ethnic/religious group. "
-            "Respond with STRICT JSON only: {\"allowed\": true|false, \"reason\": \"short reason in Turkish, empty if allowed\"}. "
-            "No markdown, no extra text."
-        )
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"mod-{uuid.uuid4().hex[:8]}",
-            system_message=system_msg,
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-        response_text = await chat.send_message(UserMessage(text=text))
-        import json as _json
-        # Find JSON object in response
-        match = re.search(r"\{.*\}", response_text or "", re.DOTALL)
-        if not match:
-            return {"allowed": True, "reason": ""}
-        data = _json.loads(match.group(0))
-        return {"allowed": bool(data.get("allowed", True)), "reason": str(data.get("reason", ""))[:200]}
-    except Exception as e:
-        logging.warning(f"Moderation error (allowing by default): {e}")
-        return {"allowed": True, "reason": ""}
+    """Local moderation placeholder; keep content flowing without a hosted AI dependency."""
+    blocked_terms = [
+        term.strip().lower()
+        for term in os.environ.get("BLOCKED_TERMS", "").split(",")
+        if term.strip()
+    ]
+    lowered = text.lower()
+    for term in blocked_terms:
+        if term in lowered:
+            return {"allowed": False, "reason": "Bu içerik yayın kurallarına takıldı"}
+    return {"allowed": True, "reason": ""}
 
 
 async def create_notification(user_id: str, ntype: str, data: dict) -> None:
@@ -241,12 +211,13 @@ async def create_session(user_id: str) -> str:
 
 
 def set_session_cookie(response: Response, token: str) -> None:
+    secure_cookie = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
     response.set_cookie(
         key="session_token",
         value=token,
         httponly=True,
-        secure=True,
-        samesite="none",
+        secure=secure_cookie,
+        samesite="none" if secure_cookie else "lax",
         max_age=SESSION_DAYS * 24 * 60 * 60,
         path="/",
     )
@@ -347,56 +318,10 @@ async def login(body: LoginBody, response: Response):
 
 @api_router.post("/auth/google-session")
 async def google_session(body: GoogleSessionBody, response: Response):
-    async with httpx.AsyncClient(timeout=15.0) as http_client:
-        try:
-            r = await http_client.get(
-                EMERGENT_SESSION_URL,
-                headers={"X-Session-ID": body.session_id},
-            )
-        except httpx.HTTPError:
-            raise HTTPException(status_code=502, detail="Auth servisine ulaşılamadı")
-
-    if r.status_code != 200:
-        raise HTTPException(status_code=401, detail="Geçersiz session_id")
-    data = r.json()
-    email = data.get("email", "").lower().strip()
-    if not email:
-        raise HTTPException(status_code=400, detail="Email alınamadı")
-
-    user = await db.users.find_one({"email": email})
-    if user is None:
-        user_id = new_id("u_")
-        user = {
-            "user_id": user_id,
-            "email": email,
-            "name": data.get("name", email.split("@")[0]),
-            "password_hash": None,
-            "picture": data.get("picture"),
-            "role": "user",
-            "auth_provider": "google",
-            "created_at": iso(now_utc()),
-        }
-        await db.users.insert_one(user)
-    else:
-        update = {}
-        if not user.get("picture") and data.get("picture"):
-            update["picture"] = data.get("picture")
-        if user.get("auth_provider") != "google" and not user.get("password_hash"):
-            update["auth_provider"] = "google"
-        if update:
-            await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
-            user.update(update)
-
-    # Use emergent session_token if provided, else create our own
-    session_token = data.get("session_token") or uuid.uuid4().hex + uuid.uuid4().hex
-    await db.user_sessions.insert_one({
-        "session_token": session_token,
-        "user_id": user["user_id"],
-        "expires_at": iso(now_utc() + timedelta(days=SESSION_DAYS)),
-        "created_at": iso(now_utc()),
-    })
-    set_session_cookie(response, session_token)
-    return {"user": public_user(user)}
+    raise HTTPException(
+        status_code=501,
+        detail="Google login is not configured in this independent build. Use email/password login.",
+    )
 
 
 @api_router.get("/auth/me")
@@ -966,10 +891,6 @@ async def boost_checkout(body: BoostCheckoutBody, http_request: Request, user=De
     success_url = f"{origin}/odeme/basarili?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/fisilti/{body.whisper_id}"
 
-    host_url = str(http_request.base_url)
-    webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-
     metadata = {
         "kind": "boost",
         "user_id": user["user_id"],
@@ -977,18 +898,26 @@ async def boost_checkout(body: BoostCheckoutBody, http_request: Request, user=De
         "package_id": body.package_id,
         "hours": str(pkg["hours"]),
     }
-    req = CheckoutSessionRequest(
-        amount=float(pkg["amount"]),
-        currency=pkg["currency"],
+    stripe.api_key = api_key
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        payment_method_types=["card"],
+        line_items=[{
+            "price_data": {
+                "currency": pkg["currency"],
+                "unit_amount": int(round(float(pkg["amount"]) * 100)),
+                "product_data": {"name": pkg["label"]},
+            },
+            "quantity": 1,
+        }],
         success_url=success_url,
         cancel_url=cancel_url,
         metadata=metadata,
     )
-    session = await stripe_checkout.create_checkout_session(req)
 
     await db.payment_transactions.insert_one({
         "transaction_id": new_id("pt_"),
-        "session_id": session.session_id,
+        "session_id": session.id,
         "user_id": user["user_id"],
         "whisper_id": body.whisper_id,
         "package_id": body.package_id,
@@ -1000,7 +929,7 @@ async def boost_checkout(body: BoostCheckoutBody, http_request: Request, user=De
         "boost_applied": False,
         "created_at": iso(now_utc()),
     })
-    return {"url": session.url, "session_id": session.session_id}
+    return {"url": session.url, "session_id": session.id}
 
 
 @api_router.get("/boost/status/{session_id}")
@@ -1010,10 +939,10 @@ async def boost_status(session_id: str, http_request: Request):
         raise HTTPException(status_code=404, detail="İşlem bulunamadı")
 
     api_key = os.environ.get("STRIPE_API_KEY")
-    host_url = str(http_request.base_url)
-    webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    status = await stripe_checkout.get_checkout_status(session_id)
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Ödeme servisi yapılandırılmamış")
+    stripe.api_key = api_key
+    status = stripe.checkout.Session.retrieve(session_id)
 
     # Update transaction (idempotent — only apply boost once)
     update = {
@@ -1048,18 +977,25 @@ async def boost_status(session_id: str, http_request: Request):
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     api_key = os.environ.get("STRIPE_API_KEY")
-    host_url = str(request.base_url)
-    webhook_url = f"{host_url.rstrip('/')}/api/webhook/stripe"
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    webhook_secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Ödeme servisi yapılandırılmamış")
+    stripe.api_key = api_key
     body = await request.body()
     signature = request.headers.get("Stripe-Signature", "")
     try:
-        event = await stripe_checkout.handle_webhook(body, signature)
+        if webhook_secret:
+            event = stripe.Webhook.construct_event(body, signature, webhook_secret)
+        else:
+            event = stripe.Event.construct_from(__import__("json").loads(body), stripe.api_key)
     except Exception as e:
         logging.warning(f"Stripe webhook verification failed: {e}")
         raise HTTPException(status_code=400, detail="invalid webhook")
 
-    session_id = getattr(event, "session_id", None)
+    if event.get("type") != "checkout.session.completed":
+        return {"ok": True}
+    checkout_session = event["data"]["object"]
+    session_id = checkout_session.get("id")
     if not session_id:
         return {"ok": True}
 
@@ -1069,10 +1005,10 @@ async def stripe_webhook(request: Request):
 
     await db.payment_transactions.update_one(
         {"session_id": session_id},
-        {"$set": {"payment_status": event.payment_status, "updated_at": iso(now_utc())}},
+        {"$set": {"payment_status": checkout_session.get("payment_status"), "updated_at": iso(now_utc())}},
     )
 
-    if event.payment_status == "paid" and not tx.get("boost_applied"):
+    if checkout_session.get("payment_status") == "paid" and not tx.get("boost_applied"):
         hours = int(tx.get("metadata", {}).get("hours", "24"))
         expires = iso(now_utc() + timedelta(hours=hours))
         await db.whispers.update_one(
@@ -1094,7 +1030,7 @@ app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
