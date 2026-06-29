@@ -1,6 +1,6 @@
 # Fısıltı Gazetesi Mobile
 
-Expo tabanlı mobil kabuk. Şimdilik canlı web uygulamasını native WebView içinde açar.
+Expo tabanlı native mobil uygulama başlangıcı. WebView kullanmaz; doğrudan canlı backend API'sine bağlanır.
 
 ## Telefonda Deneme
 
@@ -14,6 +14,6 @@ Sonra telefona Expo Go kurup terminalde çıkan QR kodu okut.
 
 ## Notlar
 
-- Uygulama adresi: `https://fisiltigazetesi.app`
-- Giriş/kayıt canlı siteyle aynı backend'i kullanır.
-- Sonraki native adımlar: uygulama ikonu, splash görseli, push bildirimleri, Play Store / App Store build.
+- Backend: `https://sea-lion-app-jcnrp.ondigitalocean.app`
+- Giriş/kayıt, fısıltı listeleme ve fısıltı bırakma native ekrandan çalışır.
+- Sonraki native adımlar: kalıcı güvenli oturum, profil, arama, mesajlar, push bildirimleri, Play Store / App Store build.
