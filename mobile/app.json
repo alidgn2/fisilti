@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "scheme": "fisilti",
     "userInterfaceStyle": "light",
+    "backgroundColor": "#f4ecd8",
     "splash": {
       "backgroundColor": "#f4ecd8"
     },
@@ -14,7 +15,8 @@
       "bundleIdentifier": "app.fisiltigazetesi.mobile"
     },
     "android": {
-      "package": "app.fisiltigazetesi.mobile"
+      "package": "app.fisiltigazetesi.mobile",
+      "edgeToEdgeEnabled": true
     }
   }
 }

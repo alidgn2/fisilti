@@ -1,6 +1,8 @@
 # Fısıltı Gazetesi Mobile
 
-Expo tabanlı ilk mobil kabuk. Canlı web uygulamasını native WebView içinde açar.
+Expo tabanlı mobil kabuk. Şimdilik canlı web uygulamasını native WebView içinde açar.
+
+## Telefonda Deneme
 
 ```powershell
 cd mobile
@@ -8,4 +10,10 @@ npm install
 npm run start
 ```
 
-Android için Expo Go ile QR kodu okutabiliriz. App Store / Play Store yayınına geçmeden önce native bildirim, ikon ve splash görsellerini ayrıca netleştireceğiz.
+Sonra telefona Expo Go kurup terminalde çıkan QR kodu okut.
+
+## Notlar
+
+- Uygulama adresi: `https://fisiltigazetesi.app`
+- Giriş/kayıt canlı siteyle aynı backend'i kullanır.
+- Sonraki native adımlar: uygulama ikonu, splash görseli, push bildirimleri, Play Store / App Store build.
