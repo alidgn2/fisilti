@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -7,8 +7,10 @@ import { MessageCircle, Send } from "lucide-react";
 
 export default function Messages() {
     const { userId } = useParams();
+    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { user: currentUser } = useAuth();
+    const targetUserId = userId || searchParams.get("to") || "";
     const [conversations, setConversations] = useState([]);
     const [activeUser, setActiveUser] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -26,24 +28,27 @@ export default function Messages() {
     }, []);
 
     const loadThread = useCallback(async () => {
-        if (!userId) {
+        if (!targetUserId) {
             setActiveUser(null);
             setMessages([]);
             return;
         }
         setLoading(true);
         try {
-            const { data } = await api.get(`/messages/${userId}`);
+            const { data } = await api.get(`/messages/${targetUserId}`);
             setActiveUser(data.user);
             setMessages(data.messages);
             await loadConversations();
+            if (!userId) {
+                navigate(`/mesajlar/${targetUserId}`, { replace: true });
+            }
         } catch (e) {
             toast.error(formatApiError(e));
             navigate("/mesajlar", { replace: true });
         } finally {
             setLoading(false);
         }
-    }, [loadConversations, navigate, userId]);
+    }, [loadConversations, navigate, targetUserId, userId]);
 
     useEffect(() => {
         setLoading(true);
@@ -57,10 +62,10 @@ export default function Messages() {
     const sendMessage = async (e) => {
         e.preventDefault();
         const content = draft.trim();
-        if (!userId || !content || sending) return;
+        if (!targetUserId || !content || sending) return;
         setSending(true);
         try {
-            const { data } = await api.post(`/messages/${userId}`, { content });
+            const { data } = await api.post(`/messages/${targetUserId}`, { content });
             setMessages((items) => [...items, data]);
             setDraft("");
             await loadConversations();
@@ -96,7 +101,7 @@ export default function Messages() {
                                 <Link
                                     key={item.conversation_id}
                                     to={`/mesajlar/${item.user.user_id}`}
-                                    className={`block p-4 hover:bg-ink/5 ${userId === item.user.user_id ? "bg-ink text-paper hover:bg-ink" : ""}`}
+                                    className={`block p-4 hover:bg-ink/5 ${targetUserId === item.user.user_id ? "bg-ink text-paper hover:bg-ink" : ""}`}
                                     data-testid={`conversation-${item.user.user_id}`}
                                 >
                                     <div className="flex items-center gap-3">
@@ -124,7 +129,7 @@ export default function Messages() {
                 </aside>
 
                 <section className="border-2 border-ink bg-paper/60 min-h-[420px] flex flex-col" data-testid="message-thread">
-                    {!userId ? (
+                    {!targetUserId ? (
                         <div className="flex-1 flex items-center justify-center p-8 text-center">
                             <div>
                                 <MessageCircle className="mx-auto mb-3" size={34} />

@@ -122,7 +122,7 @@ export default function PublicProfile() {
 
             {!profile.is_self && (
                 <div className="mt-6 flex justify-end gap-3 flex-wrap">
-                    <Link to={`/mesajlar/${profile.user_id}`} className="btn-outline-ink flex items-center gap-2" data-testid="public-profile-message-link">
+                    <Link to={`/mesajlar?to=${profile.user_id}`} className="btn-outline-ink flex items-center gap-2" data-testid="public-profile-message-link">
                         <MessageCircle size={14} /> Mesaj Gönder
                     </Link>
                     <button
