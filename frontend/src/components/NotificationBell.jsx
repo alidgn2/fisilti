@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,7 +57,7 @@ export default function NotificationBell() {
     const [loaded, setLoaded] = useState(false);
     const containerRef = useRef(null);
 
-    const refresh = async () => {
+    const refresh = useCallback(async () => {
         if (!user) return;
         try {
             const { data } = await api.get("/notifications/unread_count");
@@ -65,7 +65,7 @@ export default function NotificationBell() {
         } catch {
             /* noop */
         }
-    };
+    }, [user]);
 
     const load = async () => {
         if (!user) return;
@@ -88,7 +88,7 @@ export default function NotificationBell() {
         refresh();
         const t = setInterval(refresh, 30000); // poll every 30s
         return () => clearInterval(t);
-    }, [user]);
+    }, [user, refresh]);
 
     useEffect(() => {
         const onClick = (e) => {
