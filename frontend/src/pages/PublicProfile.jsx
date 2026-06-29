@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { ArrowLeft, UserPlus, UserMinus, MessageCircle } from "lucide-react";
+import { ArrowLeft, UserPlus, UserMinus, MessageCircle, Ban } from "lucide-react";
 
 export default function PublicProfile() {
     const { userId } = useParams();
@@ -15,6 +15,7 @@ export default function PublicProfile() {
     const [loading, setLoading] = useState(true);
     const [notFound, setNotFound] = useState(false);
     const [followBusy, setFollowBusy] = useState(false);
+    const [blockBusy, setBlockBusy] = useState(false);
 
     const toggleFollow = async () => {
         if (!currentUser) {
@@ -35,6 +36,24 @@ export default function PublicProfile() {
             toast.error(formatApiError(e));
         } finally {
             setFollowBusy(false);
+        }
+    };
+
+    const toggleBlock = async () => {
+        if (!currentUser) {
+            navigate("/giris");
+            return;
+        }
+        if (blockBusy) return;
+        setBlockBusy(true);
+        try {
+            const { data } = await api.post(`/users/${userId}/block`);
+            setProfile((p) => p ? { ...p, is_blocked: data.is_blocked, is_following: false } : p);
+            toast.success(data.is_blocked ? "Muhabir engellendi" : "Engel kaldırıldı");
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setBlockBusy(false);
         }
     };
 
@@ -109,6 +128,9 @@ export default function PublicProfile() {
                             № {profile.user_id.slice(2, 10).toUpperCase()}
                         </p>
                         <p className="font-serif italic text-sm text-inkmuted mt-1">{memberSince}'dan beri</p>
+                        {profile.username && <p className="font-mono text-xs uppercase tracking-widest text-inkmuted mt-1">@{profile.username}</p>}
+                        {profile.neighborhood && <p className="font-serif italic text-sm text-inkmuted mt-1">{profile.neighborhood}</p>}
+                        {profile.bio && <p className="font-serif text-sm mt-2 leading-snug">{profile.bio}</p>}
                     </div>
                 </div>
 
@@ -125,6 +147,14 @@ export default function PublicProfile() {
                     <Link to={`/mesajlar?to=${profile.user_id}`} className="btn-outline-ink flex items-center gap-2" data-testid="public-profile-message-link">
                         <MessageCircle size={14} /> Mesaj Gönder
                     </Link>
+                    <button
+                        onClick={toggleBlock}
+                        disabled={blockBusy}
+                        className="btn-outline-ink flex items-center gap-2"
+                        data-testid="public-profile-block-btn"
+                    >
+                        <Ban size={14} /> {profile.is_blocked ? "Engeli Kaldır" : "Engelle"}
+                    </button>
                     <button
                         onClick={toggleFollow}
                         disabled={followBusy}

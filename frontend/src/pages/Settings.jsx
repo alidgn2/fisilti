@@ -43,6 +43,9 @@ export default function Settings() {
     const navigate = useNavigate();
     const fileRef = useRef(null);
     const [name, setName] = useState(user?.name || "");
+    const [username, setUsername] = useState(user?.username || "");
+    const [bio, setBio] = useState(user?.bio || "");
+    const [neighborhood, setNeighborhood] = useState(user?.neighborhood || "");
     const [picture, setPicture] = useState(user?.picture || null);
     const [busy, setBusy] = useState(false);
 
@@ -67,6 +70,9 @@ export default function Settings() {
         try {
             const { data } = await api.put("/users/me", {
                 name,
+                username,
+                bio,
+                neighborhood,
                 picture,
             });
             setUser(data);
@@ -121,6 +127,43 @@ export default function Settings() {
                                 required
                                 onChange={(e) => setName(e.target.value)}
                                 data-testid="settings-name-input"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">Kullanıcı Adı</label>
+                            <input
+                                className="telegram-input"
+                                value={username}
+                                minLength={3}
+                                maxLength={24}
+                                placeholder="ornek_muhabir"
+                                onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                                data-testid="settings-username-input"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">Mahalle</label>
+                            <input
+                                className="telegram-input"
+                                value={neighborhood}
+                                maxLength={60}
+                                placeholder="Kadıköy, Beşiktaş..."
+                                onChange={(e) => setNeighborhood(e.target.value)}
+                                data-testid="settings-neighborhood-input"
+                            />
+                        </div>
+
+                        <div>
+                            <label className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">Kısa Bio</label>
+                            <textarea
+                                className="telegram-input min-h-[92px] resize-y"
+                                value={bio}
+                                maxLength={160}
+                                placeholder="Mahallenin sessiz tanığı..."
+                                onChange={(e) => setBio(e.target.value)}
+                                data-testid="settings-bio-input"
                             />
                         </div>
 

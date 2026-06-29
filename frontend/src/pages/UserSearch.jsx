@@ -96,6 +96,7 @@ export default function UserSearch() {
                             )}
                             <div className="min-w-0">
                                 <h3 className="font-masthead text-2xl font-black truncate">{person.name}</h3>
+                                {person.username && <p className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">@{person.username}</p>}
                                 <p className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">
                                     {person.stats?.whisper_count ?? 0} fısıltı - {person.stats?.follower_count ?? 0} takipçi
                                 </p>

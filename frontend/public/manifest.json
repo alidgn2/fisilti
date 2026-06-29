@@ -1,0 +1,17 @@
+{
+  "short_name": "Fısıltı",
+  "name": "Fısıltı Gazetesi",
+  "description": "Mahallenin fısıltı gazetesi.",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#111111",
+  "background_color": "#f4ecd8",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

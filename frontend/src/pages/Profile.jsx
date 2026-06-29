@@ -50,6 +50,9 @@ export default function Profile() {
                         <p className="font-mono text-xs uppercase tracking-widest text-inkmuted mt-1">
                             № {user.user_id.slice(2, 10).toUpperCase()}
                         </p>
+                        {user.username && <p className="font-mono text-xs uppercase tracking-widest text-inkmuted mt-1">@{user.username}</p>}
+                        {user.neighborhood && <p className="font-serif italic text-sm text-inkmuted mt-1">{user.neighborhood}</p>}
+                        {user.bio && <p className="font-serif text-sm mt-2 leading-snug">{user.bio}</p>}
                         <Link to="/ayarlar" className="btn-outline-ink inline-flex items-center gap-2 mt-4" data-testid="profile-settings-link">
                             <Settings size={14} /> Ayarlar
                         </Link>

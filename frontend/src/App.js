@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 import Masthead from "@/components/Masthead";
+import MobileNav from "@/components/MobileNav";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -13,6 +14,7 @@ import Settings from "@/pages/Settings";
 import UserSearch from "@/pages/UserSearch";
 import Messages from "@/pages/Messages";
 import PublicProfile from "@/pages/PublicProfile";
+import FollowList from "@/pages/FollowList";
 import HashtagFeed from "@/pages/HashtagFeed";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import AdminPanel from "@/pages/AdminPanel";
@@ -47,6 +49,8 @@ function AppShell() {
                     <Route path="/auth/callback" element={<AuthCallback />} />
                     <Route path="/fisilti/:id" element={<WhisperDetail />} />
                     <Route path="/muhabir/:userId" element={<PublicProfile />} />
+                    <Route path="/muhabir/:userId/takipciler" element={<FollowList type="followers" />} />
+                    <Route path="/muhabir/:userId/takip-edilenler" element={<FollowList type="following" />} />
                     <Route path="/etiket/:tag" element={<HashtagFeed />} />
                     <Route path="/odeme/basarili" element={<PaymentSuccess />} />
                     <Route path="/editor" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
@@ -59,6 +63,7 @@ function AppShell() {
                 </Routes>
             </main>
             <Footer />
+            <MobileNav />
         </>
     );
 }

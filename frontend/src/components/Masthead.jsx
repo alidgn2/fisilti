@@ -1,5 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/lib/api";
 import { PenLine, LogIn, UserCircle2, LogOut, Newspaper, ShieldCheck, Settings, Search, MessageCircle } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 
@@ -13,6 +15,26 @@ function todayTr() {
 export default function Masthead() {
     const { user, logout } = useAuth();
     const navigate = useNavigate();
+    const [messageUnread, setMessageUnread] = useState(0);
+
+    const refreshMessageUnread = useCallback(async () => {
+        if (!user) {
+            setMessageUnread(0);
+            return;
+        }
+        try {
+            const { data } = await api.get("/messages/unread_count");
+            setMessageUnread(data.unread_count || 0);
+        } catch {
+            setMessageUnread(0);
+        }
+    }, [user]);
+
+    useEffect(() => {
+        refreshMessageUnread();
+        const timer = setInterval(refreshMessageUnread, 30000);
+        return () => clearInterval(timer);
+    }, [refreshMessageUnread]);
 
     return (
         <header className="relative z-10 border-b-4 border-double border-ink">
@@ -53,6 +75,7 @@ export default function Masthead() {
                                 <Link to="/mesajlar" className="btn-outline-ink flex items-center gap-2" data-testid="masthead-messages-link">
                                     <MessageCircle size={14} />
                                     Mesajlar
+                                    {messageUnread > 0 && <span className="ml-1 border border-current px-1 text-[10px]">{messageUnread}</span>}
                                 </Link>
                                 <NotificationBell />
                                 {user.role === "admin" && (

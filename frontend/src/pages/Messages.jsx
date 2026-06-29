@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +17,7 @@ export default function Messages() {
     const [draft, setDraft] = useState("");
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
+    const endRef = useRef(null);
 
     const loadConversations = useCallback(async () => {
         try {
@@ -58,6 +59,10 @@ export default function Messages() {
     useEffect(() => {
         loadThread();
     }, [loadThread]);
+
+    useEffect(() => {
+        endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    }, [messages.length, userId]);
 
     const sendMessage = async (e) => {
         e.preventDefault();
@@ -168,12 +173,19 @@ export default function Messages() {
                                         </div>
                                     );
                                 })}
+                                <div ref={endRef} />
                             </div>
 
                             <form onSubmit={sendMessage} className="p-4 border-t-2 border-ink flex gap-3">
                                 <textarea
                                     value={draft}
                                     onChange={(e) => setDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter" && !e.shiftKey) {
+                                            e.preventDefault();
+                                            sendMessage(e);
+                                        }
+                                    }}
                                     className="flex-1 min-h-[54px] max-h-32 resize-y bg-paper border-2 border-ink p-3 font-serif outline-none"
                                     placeholder="Mesaj yaz..."
                                     data-testid="message-input"

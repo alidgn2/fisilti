@@ -115,6 +115,9 @@ class VoteBody(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=2, max_length=60)
+    username: Optional[str] = Field(default=None, min_length=3, max_length=24)
+    bio: Optional[str] = Field(default=None, max_length=160)
+    neighborhood: Optional[str] = Field(default=None, max_length=60)
     picture: Optional[str] = Field(default=None, max_length=700_000)
 
 
@@ -201,6 +204,9 @@ def public_user(doc: dict) -> dict:
         "user_id": doc["user_id"],
         "email": doc["email"],
         "name": doc.get("name", ""),
+        "username": doc.get("username"),
+        "bio": doc.get("bio"),
+        "neighborhood": doc.get("neighborhood"),
         "picture": doc.get("picture"),
         "role": doc.get("role", "user"),
         "auth_provider": doc.get("auth_provider", "email"),
@@ -214,12 +220,24 @@ def public_user_brief(doc: Optional[dict]) -> Optional[dict]:
     return {
         "user_id": doc["user_id"],
         "name": doc.get("name", "Anonim"),
+        "username": doc.get("username"),
         "picture": doc.get("picture"),
     }
 
 
 def conversation_id_for(user_a: str, user_b: str) -> str:
     return "dm_" + "_".join(sorted([user_a, user_b]))
+
+
+def normalize_username(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    username = value.strip().lower()
+    if not username:
+        return None
+    if not re.fullmatch(r"[a-z0-9_]{3,24}", username):
+        raise HTTPException(status_code=400, detail="Kullanıcı adı 3-24 karakter, harf/rakam/alt çizgi olmalı")
+    return username
 
 
 def validate_profile_picture(value: Optional[str]) -> Optional[str]:
@@ -328,6 +346,8 @@ async def register(body: RegisterBody, response: Response):
         "user_id": user_id,
         "email": email,
         "name": body.name.strip(),
+        "bio": "",
+        "neighborhood": "",
         "password_hash": hash_password(body.password),
         "picture": None,
         "role": "user",
@@ -673,6 +693,7 @@ async def search_users(
             "user_id": {"$ne": user["user_id"]},
             "$or": [
                 {"name": {"$regex": pattern, "$options": "i"}},
+                {"username": {"$regex": pattern, "$options": "i"}},
                 {"user_id": {"$regex": pattern, "$options": "i"}},
             ],
         },
@@ -692,6 +713,7 @@ async def search_users(
         results.append({
             "user_id": uid,
             "name": doc.get("name", "Anonim"),
+            "username": doc.get("username"),
             "picture": doc.get("picture"),
             "is_following": uid in following_ids,
             "stats": {
@@ -726,14 +748,27 @@ async def get_user_public(user_id: str, request: Request):
         if not is_self:
             f = await db.follows.find_one({"follower_id": current["user_id"], "followee_id": user_id})
             is_following = f is not None
+            blocked = await db.blocks.find_one({
+                "blocker_id": current["user_id"],
+                "blocked_id": user_id,
+            })
+            is_blocked = blocked is not None
+        else:
+            is_blocked = False
+    else:
+        is_blocked = False
 
     return {
         "user_id": user["user_id"],
         "name": user.get("name", "Anonim"),
+        "username": user.get("username"),
+        "bio": user.get("bio"),
+        "neighborhood": user.get("neighborhood"),
         "picture": user.get("picture"),
         "created_at": user.get("created_at"),
         "is_following": is_following,
         "is_self": is_self,
+        "is_blocked": is_blocked,
         "stats": {
             "whisper_count": whisper_count,
             "total_upvotes": total_up,
@@ -775,6 +810,52 @@ async def follow_user(user_id: str, user=Depends(get_current_user)):
     return {"is_following": is_following, "follower_count": follower_count}
 
 
+@api_router.post("/users/{user_id}/block")
+async def block_user(user_id: str, user=Depends(get_current_user)):
+    if user_id == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Kendini engelleyemezsin")
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+
+    existing = await db.blocks.find_one({"blocker_id": user["user_id"], "blocked_id": user_id})
+    if existing:
+        await db.blocks.delete_one({"_id": existing["_id"]})
+        is_blocked = False
+    else:
+        await db.blocks.insert_one({
+            "blocker_id": user["user_id"],
+            "blocked_id": user_id,
+            "created_at": iso(now_utc()),
+        })
+        await db.follows.delete_many({
+            "$or": [
+                {"follower_id": user["user_id"], "followee_id": user_id},
+                {"follower_id": user_id, "followee_id": user["user_id"]},
+            ]
+        })
+        is_blocked = True
+    return {"is_blocked": is_blocked}
+
+
+@api_router.get("/users/{user_id}/followers")
+async def user_followers(user_id: str, limit: int = Query(default=80, ge=1, le=200)):
+    follows = await db.follows.find({"followee_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(length=limit)
+    ids = [f["follower_id"] for f in follows]
+    docs = await db.users.find({"user_id": {"$in": ids}}, {"_id": 0, "password_hash": 0, "email": 0}).to_list(length=limit)
+    by_id = {u["user_id"]: public_user_brief(u) for u in docs}
+    return [by_id[uid] for uid in ids if uid in by_id]
+
+
+@api_router.get("/users/{user_id}/following")
+async def user_following(user_id: str, limit: int = Query(default=80, ge=1, le=200)):
+    follows = await db.follows.find({"follower_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(length=limit)
+    ids = [f["followee_id"] for f in follows]
+    docs = await db.users.find({"user_id": {"$in": ids}}, {"_id": 0, "password_hash": 0, "email": 0}).to_list(length=limit)
+    by_id = {u["user_id"]: public_user_brief(u) for u in docs}
+    return [by_id[uid] for uid in ids if uid in by_id]
+
+
 @api_router.get("/users/{user_id}/whispers")
 async def user_whispers(user_id: str, request: Request):
     cursor = db.whispers.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1)
@@ -808,15 +889,35 @@ async def my_stats(user=Depends(get_current_user)):
 @api_router.put("/users/me")
 async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user)):
     update = {}
+    unset = {}
     if body.name is not None:
         update["name"] = body.name.strip()
+    if body.username is not None:
+        username = normalize_username(body.username)
+        if username:
+            existing = await db.users.find_one({"username": username, "user_id": {"$ne": user["user_id"]}})
+            if existing:
+                raise HTTPException(status_code=400, detail="Bu kullanıcı adı alınmış")
+        if username:
+            update["username"] = username
+        else:
+            unset["username"] = ""
+    if body.bio is not None:
+        update["bio"] = body.bio.strip()
+    if body.neighborhood is not None:
+        update["neighborhood"] = body.neighborhood.strip()
     if body.picture is not None:
         update["picture"] = validate_profile_picture(body.picture)
 
-    if not update:
+    if not update and not unset:
         return public_user(user)
 
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+    op = {}
+    if update:
+        op["$set"] = update
+    if unset:
+        op["$unset"] = unset
+    await db.users.update_one({"user_id": user["user_id"]}, op)
 
     whisper_update = {}
     if "name" in update:
@@ -827,6 +928,8 @@ async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user))
         await db.whispers.update_many({"user_id": user["user_id"]}, {"$set": whisper_update})
 
     user.update(update)
+    for key in unset:
+        user.pop(key, None)
     return public_user(user)
 
 
@@ -898,6 +1001,12 @@ async def list_conversations(user=Depends(get_current_user), limit: int = Query(
     return conversations
 
 
+@api_router.get("/messages/unread_count")
+async def messages_unread_count(user=Depends(get_current_user)):
+    count = await db.messages.count_documents({"recipient_id": user["user_id"], "read": False})
+    return {"unread_count": count}
+
+
 @api_router.get("/messages/{user_id}")
 async def list_messages(user_id: str, user=Depends(get_current_user), limit: int = Query(default=100, ge=1, le=200)):
     if user_id == user["user_id"]:
@@ -905,6 +1014,14 @@ async def list_messages(user_id: str, user=Depends(get_current_user), limit: int
     other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0, "email": 0})
     if not other:
         raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+    blocked = await db.blocks.find_one({
+        "$or": [
+            {"blocker_id": user["user_id"], "blocked_id": user_id},
+            {"blocker_id": user_id, "blocked_id": user["user_id"]},
+        ]
+    })
+    if blocked:
+        raise HTTPException(status_code=403, detail="Bu konuşma engellenmiş")
 
     cid = conversation_id_for(user["user_id"], user_id)
     cursor = db.messages.find({"conversation_id": cid}, {"_id": 0}).sort("created_at", -1).limit(limit)
@@ -924,6 +1041,14 @@ async def send_message(user_id: str, body: MessageCreate, user=Depends(get_curre
     other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
     if not other:
         raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+    blocked = await db.blocks.find_one({
+        "$or": [
+            {"blocker_id": user["user_id"], "blocked_id": user_id},
+            {"blocker_id": user_id, "blocked_id": user["user_id"]},
+        ]
+    })
+    if blocked:
+        raise HTTPException(status_code=403, detail="Bu muhabire mesaj gönderilemez")
 
     content = body.content.strip()
     if not content:
@@ -1272,6 +1397,7 @@ async def seed_admin():
 async def on_startup():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("user_id", unique=True)
+    await db.users.create_index("username", unique=True, sparse=True)
     await db.user_sessions.create_index("session_token", unique=True)
     await db.user_sessions.create_index("user_id")
     await db.whispers.create_index("whisper_id", unique=True)
@@ -1283,6 +1409,8 @@ async def on_startup():
     await db.comments.create_index("whisper_id")
     await db.follows.create_index([("follower_id", 1), ("followee_id", 1)], unique=True)
     await db.follows.create_index("followee_id")
+    await db.blocks.create_index([("blocker_id", 1), ("blocked_id", 1)], unique=True)
+    await db.blocks.create_index("blocked_id")
     await db.notifications.create_index([("user_id", 1), ("created_at", -1)])
     await db.notifications.create_index([("user_id", 1), ("read", 1)])
     await db.messages.create_index([("conversation_id", 1), ("created_at", -1)])

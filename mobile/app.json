@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Fısıltı Gazetesi",
+    "slug": "fisilti-gazetesi",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "fisilti",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#f4ecd8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.fisiltigazetesi.mobile"
+    },
+    "android": {
+      "package": "app.fisiltigazetesi.mobile"
+    }
+  }
+}
