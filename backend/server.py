@@ -109,6 +109,11 @@ class VoteBody(BaseModel):
     value: Literal[1, -1]
 
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=60)
+    picture: Optional[str] = Field(default=None, max_length=700_000)
+
+
 class UserOut(BaseModel):
     user_id: str
     email: str
@@ -197,6 +202,22 @@ def public_user(doc: dict) -> dict:
         "auth_provider": doc.get("auth_provider", "email"),
         "created_at": doc.get("created_at"),
     }
+
+
+def validate_profile_picture(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    allowed_prefixes = (
+        "data:image/jpeg;base64,",
+        "data:image/jpg;base64,",
+        "data:image/png;base64,",
+        "data:image/webp;base64,",
+    )
+    if not value.startswith(allowed_prefixes):
+        raise HTTPException(status_code=400, detail="Profil fotoğrafı JPG, PNG veya WEBP olmalı")
+    if len(value) > 700_000:
+        raise HTTPException(status_code=400, detail="Profil fotoğrafı çok büyük")
+    return value
 
 
 async def create_session(user_id: str) -> str:
@@ -719,6 +740,31 @@ async def my_stats(user=Depends(get_current_user)):
         "follower_count": follower_count,
         "following_count": following_count,
     }
+
+
+@api_router.put("/users/me")
+async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user)):
+    update = {}
+    if body.name is not None:
+        update["name"] = body.name.strip()
+    if body.picture is not None:
+        update["picture"] = validate_profile_picture(body.picture)
+
+    if not update:
+        return public_user(user)
+
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+
+    whisper_update = {}
+    if "name" in update:
+        whisper_update["author_name"] = update["name"]
+    if "picture" in update:
+        whisper_update["author_picture"] = update["picture"]
+    if whisper_update:
+        await db.whispers.update_many({"user_id": user["user_id"]}, {"$set": whisper_update})
+
+    user.update(update)
+    return public_user(user)
 
 
 @api_router.get("/")

@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
+import { Settings } from "lucide-react";
 
 export default function Profile() {
     const { user } = useAuth();
@@ -48,6 +50,9 @@ export default function Profile() {
                         <p className="font-mono text-xs uppercase tracking-widest text-inkmuted mt-1">
                             № {user.user_id.slice(2, 10).toUpperCase()}
                         </p>
+                        <Link to="/ayarlar" className="btn-outline-ink inline-flex items-center gap-2 mt-4" data-testid="profile-settings-link">
+                            <Settings size={14} /> Ayarlar
+                        </Link>
                     </div>
                 </div>
 

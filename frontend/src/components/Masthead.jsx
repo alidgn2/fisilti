@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { PenLine, LogIn, UserCircle2, LogOut, Newspaper, ShieldCheck } from "lucide-react";
+import { PenLine, LogIn, UserCircle2, LogOut, Newspaper, ShieldCheck, Settings } from "lucide-react";
 import NotificationBell from "@/components/NotificationBell";
 
 function todayTr() {
@@ -55,6 +55,9 @@ export default function Masthead() {
                                 <Link to="/profil" data-testid="masthead-profile-link" className="btn-outline-ink flex items-center gap-2">
                                     <UserCircle2 size={14} />
                                     {user.name?.split(" ")[0] || "Profil"}
+                                </Link>
+                                <Link to="/ayarlar" data-testid="masthead-settings-link" className="btn-outline-ink flex items-center gap-2" aria-label="Ayarlar">
+                                    <Settings size={14} />
                                 </Link>
                                 <button
                                     onClick={async () => { await logout(); navigate("/"); }}
