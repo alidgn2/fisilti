@@ -706,10 +706,20 @@ async def search_users(
         {"_id": 0, "followee_id": 1},
     ).to_list(length=1000)
     following_ids = {f["followee_id"] for f in follows}
+    blocks = await db.blocks.find(
+        {"$or": [{"blocker_id": user["user_id"]}, {"blocked_id": user["user_id"]}]},
+        {"_id": 0, "blocker_id": 1, "blocked_id": 1},
+    ).to_list(length=1000)
+    blocked_ids = {
+        b["blocked_id"] if b["blocker_id"] == user["user_id"] else b["blocker_id"]
+        for b in blocks
+    }
 
     results = []
     for doc in docs:
         uid = doc["user_id"]
+        if uid in blocked_ids:
+            continue
         results.append({
             "user_id": uid,
             "name": doc.get("name", "Anonim"),
@@ -787,6 +797,15 @@ async def follow_user(user_id: str, user=Depends(get_current_user)):
     target = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
     if not target:
         raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+
+    blocked = await db.blocks.find_one({
+        "$or": [
+            {"blocker_id": user["user_id"], "blocked_id": user_id},
+            {"blocker_id": user_id, "blocked_id": user["user_id"]},
+        ]
+    })
+    if blocked:
+        raise HTTPException(status_code=403, detail="Engellenen muhabir takip edilemez")
 
     existing = await db.follows.find_one({"follower_id": user["user_id"], "followee_id": user_id})
     if existing:
@@ -1397,7 +1416,16 @@ async def seed_admin():
 async def on_startup():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("user_id", unique=True)
-    await db.users.create_index("username", unique=True, sparse=True)
+    try:
+        await db.users.drop_index("username_1")
+    except Exception:
+        pass
+    await db.users.create_index(
+        "username",
+        name="username_unique_string",
+        unique=True,
+        partialFilterExpression={"username": {"$type": "string"}},
+    )
     await db.user_sessions.create_index("session_token", unique=True)
     await db.user_sessions.create_index("user_id")
     await db.whispers.create_index("whisper_id", unique=True)
