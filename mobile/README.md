@@ -2,7 +2,7 @@
 
 Expo tabanlı native mobil uygulama başlangıcı. WebView kullanmaz; doğrudan canlı backend API'sine bağlanır.
 
-## Telefonda Deneme
+## Expo Go ile Hızlı Deneme
 
 ```powershell
 cd mobile
@@ -11,6 +11,19 @@ npm run start
 ```
 
 Sonra telefona Expo Go kurup terminalde çıkan QR kodu okut.
+
+## Ayrı Android Uygulaması Alma
+
+Expo Go sadece deneme içindir. Telefona ayrı APK kurmak için:
+
+```powershell
+cd mobile
+npm install
+npx eas login
+npx eas build -p android --profile preview
+```
+
+Build bitince Expo sana `.apk` indirme linki verir. O APK telefona kurulur.
 
 ## Notlar
 
