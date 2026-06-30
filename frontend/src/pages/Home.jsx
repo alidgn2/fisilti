@@ -64,10 +64,6 @@ export default function Home() {
 
     useEffect(() => { load(); }, [load]);
 
-    // Top whispers for sidebar
-    const headline = whispers[0];
-    const restWhispers = whispers.slice(1);
-
     if (!user) {
         return <WelcomeLanding />;
     }
@@ -171,35 +167,16 @@ export default function Home() {
                 <EmptyState following={sort === "following"} />
             ) : (
                 <>
-                    {/* Lead Story */}
-                    {headline && (
-                        <div className="mb-10 pb-10 border-b-4 border-double border-ink grid grid-cols-1 md:grid-cols-3 gap-8" data-testid="lead-story">
-                            <div className="md:col-span-2">
-                                <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-stamp mb-2 flex items-center gap-2">
-                                    <Newspaper size={12} /> Manşet • {sort === "top" ? "En Çok Konuşulan" : sort === "trending" ? "Yükselen" : "En Taze Fısıltı"}
-                                </p>
-                                <WhisperCard whisper={headline} />
+                    <div className="max-w-3xl mx-auto space-y-8" data-testid="whispers-feed">
+                        {whispers.map((w, index) => (
+                            <div key={w.whisper_id}>
+                                {index === 0 && (
+                                    <p className="font-mono text-[10px] uppercase tracking-[0.4em] text-stamp mb-2 flex items-center gap-2">
+                                        <Newspaper size={12} /> {sort === "top" ? "En Çok Konuşulan" : sort === "trending" ? "Yükselen" : "En Taze Fısıltı"}
+                                    </p>
+                                )}
+                                <WhisperCard whisper={w} />
                             </div>
-                            <aside className="md:border-l-2 md:border-dashed md:border-ink/40 md:pl-8">
-                                <h3 className="font-masthead text-xl font-black mb-3 border-b-2 border-ink pb-2">Mahalleden Mırıltılar</h3>
-                                <ul className="space-y-3">
-                                    {restWhispers.slice(0, 5).map((w) => (
-                                        <li key={w.whisper_id} className="font-mono text-xs leading-snug">
-                                            <Link to={`/fisilti/${w.whisper_id}`} className="hover:text-stamp transition-colors block" data-testid={`sidebar-link-${w.whisper_id}`}>
-                                                <span className="text-stamp uppercase tracking-widest mr-1">[{w.category}]</span>
-                                                {w.content.slice(0, 110)}{w.content.length > 110 ? "..." : ""}
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </aside>
-                        </div>
-                    )}
-
-                    {/* Feed columns */}
-                    <div className="newsfeed columns-1 md:columns-2 lg:columns-3" data-testid="whispers-feed">
-                        {restWhispers.map((w) => (
-                            <WhisperCard key={w.whisper_id} whisper={w} />
                         ))}
                     </div>
 
@@ -217,7 +194,7 @@ export default function Home() {
                         </div>
                     )}
 
-                    {!hasMore && restWhispers.length === 0 && (
+                    {!hasMore && whispers.length === 1 && (
                         <p className="mt-10 text-center font-mono text-xs uppercase tracking-widest text-inkmuted">
                             Şimdilik bu kadar. Sen de bir fısıltı bırakmak ister misin?
                         </p>

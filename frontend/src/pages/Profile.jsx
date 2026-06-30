@@ -74,7 +74,7 @@ export default function Profile() {
                 ) : whispers.length === 0 ? (
                     <p className="font-serif italic text-inkmuted">Henüz hiçbir fısıltın yok. Sahaya çık!</p>
                 ) : (
-                    <div className="newsfeed columns-1 md:columns-2" data-testid="profile-whispers">
+                    <div className="max-w-3xl mx-auto space-y-8" data-testid="profile-whispers">
                         {whispers.map((w) => <WhisperCard key={w.whisper_id} whisper={w} />)}
                     </div>
                 )}

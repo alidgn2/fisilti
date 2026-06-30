@@ -179,7 +179,7 @@ export default function PublicProfile() {
                 {whispers.length === 0 ? (
                     <p className="font-serif italic text-inkmuted">Bu muhabir henüz bir fısıltı yazmamış.</p>
                 ) : (
-                    <div className="newsfeed columns-1 md:columns-2" data-testid="public-profile-whispers">
+                    <div className="max-w-3xl mx-auto space-y-8" data-testid="public-profile-whispers">
                         {whispers.map((w) => <WhisperCard key={w.whisper_id} whisper={w} />)}
                     </div>
                 )}

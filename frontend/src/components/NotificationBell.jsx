@@ -144,10 +144,10 @@ export default function NotificationBell() {
                 )}
             </button>
             {open && (
-                <div className="fixed inset-0 z-[120]">
+                <div className="fixed inset-0 z-[120] bg-paper">
                     <button
                         type="button"
-                        className="absolute inset-0 bg-ink/20 backdrop-blur-[1px]"
+                        className="absolute inset-0 cursor-default bg-paper"
                         onClick={() => setOpen(false)}
                         aria-label="Bildirimleri kapat"
                     />
@@ -155,7 +155,7 @@ export default function NotificationBell() {
                         role="dialog"
                         aria-modal="true"
                         aria-label="Bildirimler"
-                        className="absolute left-1/2 top-8 sm:top-24 w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 max-h-[min(620px,calc(100vh-4rem))] overflow-hidden bg-paper border-4 border-double border-ink shadow-[8px_8px_0_0_rgba(26,26,26,0.55)]"
+                        className="absolute left-1/2 top-6 sm:top-16 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2 max-h-[min(720px,calc(100vh-3rem))] overflow-hidden bg-[#F4EFE6] border-4 border-double border-ink shadow-[8px_8px_0_0_rgba(26,26,26,0.75)]"
                         data-testid="notif-dropdown"
                     >
                         <div className="px-4 sm:px-5 py-4 border-b-4 border-double border-ink flex items-center justify-between gap-3">
@@ -169,7 +169,7 @@ export default function NotificationBell() {
                                 <X size={16} />
                             </button>
                         </div>
-                        <div className="px-4 sm:px-5 py-3 max-h-[calc(min(620px,calc(100vh-4rem))-74px)] overflow-y-auto">
+                        <div className="px-4 sm:px-5 py-3 max-h-[calc(min(720px,calc(100vh-3rem))-74px)] overflow-y-auto bg-[#F4EFE6]">
                             {!loaded ? (
                                 <p className="font-mono text-xs uppercase tracking-widest text-inkmuted py-4 text-center">Yükleniyor...</p>
                             ) : items.length === 0 ? (

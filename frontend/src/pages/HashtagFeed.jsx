@@ -67,7 +67,7 @@ export default function HashtagFeed() {
                     <p className="font-serif italic mt-2 text-inkmuted">Bu etiketle henüz fısıltı yok.</p>
                 </div>
             ) : (
-                <div className="newsfeed columns-1 md:columns-2 lg:columns-3" data-testid="hashtag-whispers">
+                <div className="max-w-3xl mx-auto space-y-8" data-testid="hashtag-whispers">
                     {whispers.map((w) => <WhisperCard key={w.whisper_id} whisper={w} />)}
                 </div>
             )}
