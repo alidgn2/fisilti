@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, Save, Trash2 } from "lucide-react";
+import { Bell, Camera, Lock, Save, Shield, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, formatApiError } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,7 +47,14 @@ export default function Settings() {
     const [bio, setBio] = useState(user?.bio || "");
     const [neighborhood, setNeighborhood] = useState(user?.neighborhood || "");
     const [picture, setPicture] = useState(user?.picture || null);
+    const [profileVisibility, setProfileVisibility] = useState(user?.profile_visibility || "public");
+    const [allowMessages, setAllowMessages] = useState(user?.allow_messages || "everyone");
+    const prefs = user?.notification_preferences || {};
+    const [notifyMessages, setNotifyMessages] = useState(prefs.messages !== false);
+    const [notifyFollows, setNotifyFollows] = useState(prefs.follows !== false);
+    const [notifyComments, setNotifyComments] = useState(prefs.comments !== false);
     const [busy, setBusy] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     if (!user) return null;
 
@@ -74,6 +81,11 @@ export default function Settings() {
                 bio,
                 neighborhood,
                 picture,
+                profile_visibility: profileVisibility,
+                allow_messages: allowMessages,
+                notify_messages: notifyMessages,
+                notify_follows: notifyFollows,
+                notify_comments: notifyComments,
             });
             setUser(data);
             toast.success("Profil güncellendi");
@@ -82,6 +94,21 @@ export default function Settings() {
             toast.error(formatApiError(err));
         } finally {
             setBusy(false);
+        }
+    };
+
+    const deleteAccount = async () => {
+        const text = window.prompt("Hesabı silmek için HESABIMI SIL yaz.");
+        if (text !== "HESABIMI SIL") return;
+        setDeleting(true);
+        try {
+            await api.delete("/users/me", { data: { confirm: "HESABIMI SIL" } });
+            toast.success("Hesap silindi");
+            window.location.href = "/";
+        } catch (err) {
+            toast.error(formatApiError(err));
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -172,7 +199,71 @@ export default function Settings() {
                         </button>
                     </div>
                 </div>
+
+                <div className="divider-dashed my-8" />
+
+                <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="border-2 border-ink p-4 bg-paper/50">
+                        <h3 className="font-masthead text-2xl font-black flex items-center gap-2">
+                            <Bell size={18} /> Bildirimler
+                        </h3>
+                        <div className="mt-4 space-y-3 font-mono text-xs uppercase tracking-widest">
+                            <Toggle checked={notifyMessages} onChange={setNotifyMessages} label="Yeni mesajlar" />
+                            <Toggle checked={notifyFollows} onChange={setNotifyFollows} label="Yeni takipçiler" />
+                            <Toggle checked={notifyComments} onChange={setNotifyComments} label="Yorumlar" />
+                        </div>
+                    </div>
+
+                    <div className="border-2 border-ink p-4 bg-paper/50">
+                        <h3 className="font-masthead text-2xl font-black flex items-center gap-2">
+                            <Shield size={18} /> Gizlilik
+                        </h3>
+                        <label className="block mt-4">
+                            <span className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">Profil görünürlüğü</span>
+                            <select value={profileVisibility} onChange={(e) => setProfileVisibility(e.target.value)} className="telegram-input no-arrow">
+                                <option value="public">Herkese açık</option>
+                                <option value="followers">Sadece takipçiler</option>
+                            </select>
+                        </label>
+                        <label className="block mt-4">
+                            <span className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">Kim mesaj atabilir?</span>
+                            <select value={allowMessages} onChange={(e) => setAllowMessages(e.target.value)} className="telegram-input no-arrow">
+                                <option value="everyone">Herkes</option>
+                                <option value="followers">Sadece takipçiler</option>
+                            </select>
+                        </label>
+                    </div>
+                </section>
+
+                <div className="divider-dashed my-8" />
+
+                <section className="border-2 border-stamp p-4 bg-paper/50">
+                    <h3 className="font-masthead text-2xl font-black flex items-center gap-2 text-stamp">
+                        <Lock size={18} /> Tehlikeli Alan
+                    </h3>
+                    <p className="font-serif italic text-inkmuted mt-2">
+                        Hesabını silersen oturumun kapanır, mesajların ve takiplerin temizlenir. Yazdığın fısıltılar silinmiş muhabir adıyla kalır.
+                    </p>
+                    <button type="button" onClick={deleteAccount} disabled={deleting} className="btn-outline-ink mt-4 flex items-center gap-2" data-testid="settings-delete-account-btn">
+                        <Trash2 size={14} /> {deleting ? "Siliniyor..." : "Hesabı Sil"}
+                    </button>
+                </section>
             </form>
         </div>
+    );
+}
+
+function Toggle({ checked, onChange, label }) {
+    return (
+        <label className="flex items-center justify-between gap-4 border-b border-dashed border-ink/30 pb-3">
+            <span>{label}</span>
+            <button
+                type="button"
+                onClick={() => onChange(!checked)}
+                className={`min-w-[58px] border-2 border-ink px-2 py-1 ${checked ? "bg-ink text-paper" : "bg-paper text-ink"}`}
+            >
+                {checked ? "Açık" : "Kapalı"}
+            </button>
+        </label>
     );
 }

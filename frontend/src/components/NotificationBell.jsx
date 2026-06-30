@@ -144,23 +144,32 @@ export default function NotificationBell() {
                 )}
             </button>
             {open && (
-                <div className="fixed inset-0 z-[80] pointer-events-none">
+                <div className="fixed inset-0 z-[120]">
+                    <button
+                        type="button"
+                        className="absolute inset-0 bg-ink/20 backdrop-blur-[1px]"
+                        onClick={() => setOpen(false)}
+                        aria-label="Bildirimleri kapat"
+                    />
                     <div
-                        className="pointer-events-auto absolute right-4 top-28 w-[min(420px,calc(100vw-2rem))] max-h-[min(520px,calc(100vh-8rem))] overflow-hidden bg-paper border-2 border-ink shadow-[6px_6px_0_0_rgba(26,26,26,0.5)]"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Bildirimler"
+                        className="absolute left-1/2 top-8 sm:top-24 w-[min(560px,calc(100vw-2rem))] -translate-x-1/2 max-h-[min(620px,calc(100vh-4rem))] overflow-hidden bg-paper border-4 border-double border-ink shadow-[8px_8px_0_0_rgba(26,26,26,0.55)]"
                         data-testid="notif-dropdown"
                     >
-                        <div className="px-4 py-3 border-b-2 border-double border-ink flex items-center justify-between gap-3">
-                            <p className="font-masthead text-xl font-black">Bildirimler</p>
+                        <div className="px-4 sm:px-5 py-4 border-b-4 border-double border-ink flex items-center justify-between gap-3">
+                            <p className="font-masthead text-2xl font-black">Bildirimler</p>
                             <button
                                 type="button"
                                 onClick={() => setOpen(false)}
-                                className="p-1 border-2 border-ink hover:bg-ink hover:text-paper"
+                                className="p-2 border-2 border-ink hover:bg-ink hover:text-paper"
                                 aria-label="Bildirimleri kapat"
                             >
-                                <X size={14} />
+                                <X size={16} />
                             </button>
                         </div>
-                        <div className="px-4 py-2 max-h-[calc(min(520px,calc(100vh-8rem))-58px)] overflow-y-auto">
+                        <div className="px-4 sm:px-5 py-3 max-h-[calc(min(620px,calc(100vh-4rem))-74px)] overflow-y-auto">
                             {!loaded ? (
                                 <p className="font-mono text-xs uppercase tracking-widest text-inkmuted py-4 text-center">Yükleniyor...</p>
                             ) : items.length === 0 ? (

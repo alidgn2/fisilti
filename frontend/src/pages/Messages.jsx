@@ -28,13 +28,13 @@ export default function Messages() {
         }
     }, []);
 
-    const loadThread = useCallback(async () => {
+    const loadThread = useCallback(async ({ silent = false } = {}) => {
         if (!targetUserId) {
             setActiveUser(null);
             setMessages([]);
             return;
         }
-        setLoading(true);
+        if (!silent) setLoading(true);
         try {
             const { data } = await api.get(`/messages/${targetUserId}`);
             setActiveUser(data.user);
@@ -44,10 +44,12 @@ export default function Messages() {
                 navigate(`/mesajlar/${targetUserId}`, { replace: true });
             }
         } catch (e) {
-            toast.error(formatApiError(e));
-            navigate("/mesajlar", { replace: true });
+            if (!silent) {
+                toast.error(formatApiError(e));
+                navigate("/mesajlar", { replace: true });
+            }
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false);
         }
     }, [loadConversations, navigate, targetUserId, userId]);
 
@@ -57,8 +59,21 @@ export default function Messages() {
     }, [loadConversations]);
 
     useEffect(() => {
+        const timer = setInterval(loadConversations, 5000);
+        return () => clearInterval(timer);
+    }, [loadConversations]);
+
+    useEffect(() => {
         loadThread();
     }, [loadThread]);
+
+    useEffect(() => {
+        if (!targetUserId) return undefined;
+        const timer = setInterval(() => {
+            loadThread({ silent: true });
+        }, 3000);
+        return () => clearInterval(timer);
+    }, [loadThread, targetUserId]);
 
     useEffect(() => {
         endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });

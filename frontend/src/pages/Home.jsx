@@ -4,7 +4,7 @@ import { api, formatApiError } from "@/lib/api";
 import { CATEGORIES } from "@/constants/categories";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
-import { Flame, Clock, Trophy, Newspaper, Users, LogIn } from "lucide-react";
+import { Flame, Clock, Trophy, Newspaper, Users, LogIn, Search, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const SORTS = [
@@ -13,34 +13,54 @@ const SORTS = [
     { id: "top", label: "En Çok Konuşulan", icon: Trophy },
     { id: "following", label: "Takip Ettiklerim", icon: Users, requiresAuth: true },
 ];
+const PAGE_SIZE = 20;
 
 export default function Home() {
     const [whispers, setWhispers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [category, setCategory] = useState("all");
     const [sort, setSort] = useState("trending");
+    const [searchDraft, setSearchDraft] = useState("");
+    const [search, setSearch] = useState("");
+    const [hasMore, setHasMore] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
     const { user } = useAuth();
 
-    const load = useCallback(async () => {
-        setLoading(true);
+    const load = useCallback(async ({ append = false, offset = 0 } = {}) => {
+        append ? setLoadingMore(true) : setLoading(true);
         try {
             if (!user) {
                 setWhispers([]);
+                setHasMore(false);
                 return;
             }
             if (sort === "following") {
                 const { data } = await api.get("/whispers/following", { params: { limit: 60 } });
                 setWhispers(data);
+                setHasMore(false);
             } else {
-                const { data } = await api.get("/whispers", { params: { category, sort, limit: 60 } });
-                setWhispers(data);
+                const { data } = await api.get("/whispers", {
+                    params: {
+                        category,
+                        sort,
+                        search: search || undefined,
+                        limit: PAGE_SIZE,
+                        offset,
+                    },
+                });
+                setWhispers((items) => {
+                    if (!append) return data;
+                    const seen = new Set(items.map((item) => item.whisper_id));
+                    return [...items, ...data.filter((item) => !seen.has(item.whisper_id))];
+                });
+                setHasMore(data.length === PAGE_SIZE);
             }
         } catch (e) {
             toast.error(formatApiError(e));
         } finally {
-            setLoading(false);
+            append ? setLoadingMore(false) : setLoading(false);
         }
-    }, [category, sort, user]);
+    }, [category, search, sort, user]);
 
     useEffect(() => { load(); }, [load]);
 
@@ -78,6 +98,45 @@ export default function Home() {
                     })}
                 </div>
             </div>
+
+            <form
+                onSubmit={(e) => {
+                    e.preventDefault();
+                    const term = searchDraft.trim();
+                    if (term.length === 1) {
+                        toast.error("Arama icin en az 2 karakter yaz.");
+                        return;
+                    }
+                    setSearch(term);
+                }}
+                className="mb-5 flex flex-col sm:flex-row gap-2"
+                data-testid="whisper-search-form"
+            >
+                <label className="flex-1 flex items-center gap-3 border-2 border-ink bg-paper/60 px-4 py-3">
+                    <Search size={16} />
+                    <input
+                        value={searchDraft}
+                        onChange={(e) => setSearchDraft(e.target.value)}
+                        className="flex-1 bg-transparent outline-none font-serif text-lg"
+                        placeholder="Fısıltılarda ara: Kadıköy, vapur, berber..."
+                        data-testid="whisper-search-input"
+                    />
+                </label>
+                <button type="submit" className="btn-ink" data-testid="whisper-search-submit">Ara</button>
+                {search && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSearch("");
+                            setSearchDraft("");
+                        }}
+                        className="btn-outline-ink inline-flex items-center justify-center gap-2"
+                        data-testid="whisper-search-clear"
+                    >
+                        <X size={14} /> Temizle
+                    </button>
+                )}
+            </form>
 
             {/* Category chips - hidden when viewing following feed */}
             {sort !== "following" && (
@@ -139,12 +198,26 @@ export default function Home() {
 
                     {/* Feed columns */}
                     <div className="newsfeed columns-1 md:columns-2 lg:columns-3" data-testid="whispers-feed">
-                        {restWhispers.slice(5).map((w) => (
+                        {restWhispers.map((w) => (
                             <WhisperCard key={w.whisper_id} whisper={w} />
                         ))}
                     </div>
 
-                    {restWhispers.length <= 5 && (
+                    {hasMore && (
+                        <div className="mt-10 text-center">
+                            <button
+                                type="button"
+                                onClick={() => load({ append: true, offset: whispers.length })}
+                                disabled={loadingMore}
+                                className="btn-outline-ink"
+                                data-testid="load-more-whispers"
+                            >
+                                {loadingMore ? "Yükleniyor..." : "Daha Fazla Yükle"}
+                            </button>
+                        </div>
+                    )}
+
+                    {!hasMore && restWhispers.length === 0 && (
                         <p className="mt-10 text-center font-mono text-xs uppercase tracking-widest text-inkmuted">
                             Şimdilik bu kadar. Sen de bir fısıltı bırakmak ister misin?
                         </p>

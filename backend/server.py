@@ -119,6 +119,15 @@ class ProfileUpdate(BaseModel):
     bio: Optional[str] = Field(default=None, max_length=160)
     neighborhood: Optional[str] = Field(default=None, max_length=60)
     picture: Optional[str] = Field(default=None, max_length=700_000)
+    profile_visibility: Optional[Literal["public", "followers"]] = None
+    allow_messages: Optional[Literal["everyone", "followers"]] = None
+    notify_messages: Optional[bool] = None
+    notify_follows: Optional[bool] = None
+    notify_comments: Optional[bool] = None
+
+
+class DeleteAccountBody(BaseModel):
+    confirm: Literal["HESABIMI SIL"]
 
 
 class UserOut(BaseModel):
@@ -189,6 +198,15 @@ async def create_notification(user_id: str, ntype: str, data: dict) -> None:
     """Create an in-app notification. ntype: comment | follow | upvote_milestone | mention | moderation."""
     if not user_id:
         return
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0, "notification_preferences": 1})
+    prefs = (target or {}).get("notification_preferences") or {}
+    pref_key = {
+        "message": "messages",
+        "follow": "follows",
+        "comment": "comments",
+    }.get(ntype)
+    if pref_key and prefs.get(pref_key, True) is False:
+        return
     await db.notifications.insert_one({
         "notification_id": new_id("n_"),
         "user_id": user_id,
@@ -208,6 +226,13 @@ def public_user(doc: dict) -> dict:
         "bio": doc.get("bio"),
         "neighborhood": doc.get("neighborhood"),
         "picture": doc.get("picture"),
+        "profile_visibility": doc.get("profile_visibility", "public"),
+        "allow_messages": doc.get("allow_messages", "everyone"),
+        "notification_preferences": doc.get("notification_preferences", {
+            "messages": True,
+            "follows": True,
+            "comments": True,
+        }),
         "role": doc.get("role", "user"),
         "auth_provider": doc.get("auth_provider", "email"),
         "created_at": doc.get("created_at"),
@@ -456,8 +481,10 @@ async def list_whispers(
     request: Request,
     category: Optional[str] = Query(default=None),
     hashtag: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None, min_length=2, max_length=80),
     sort: Literal["new", "top", "trending"] = Query(default="new"),
     limit: int = Query(default=30, ge=1, le=100),
+    offset: int = Query(default=0, ge=0, le=1000),
 ):
     q = {"moderation_status": {"$ne": "hidden"}}
     if category and category != "all":
@@ -466,6 +493,16 @@ async def list_whispers(
         q["category"] = category
     if hashtag:
         q["hashtags"] = hashtag.lower().lstrip("#")
+    if search:
+        term = search.strip()
+        if term:
+            q["$or"] = [
+                {"content": {"$regex": re.escape(term), "$options": "i"}},
+                {"location": {"$regex": re.escape(term), "$options": "i"}},
+                {"overheard_from": {"$regex": re.escape(term), "$options": "i"}},
+                {"author_name": {"$regex": re.escape(term), "$options": "i"}},
+                {"hashtags": term.lower().lstrip("#")},
+            ]
 
     cursor = db.whispers.find(q, {"_id": 0})
     cursor = cursor.sort("created_at", -1)
@@ -506,7 +543,7 @@ async def list_whispers(
 
     docs = pinned + organic
 
-    docs = docs[:limit]
+    docs = docs[offset:offset + limit]
     current = await get_optional_user(request)
     return [await serialize_whisper(d, current) for d in docs]
 
@@ -767,18 +804,20 @@ async def get_user_public(user_id: str, request: Request):
             is_blocked = False
     else:
         is_blocked = False
+    private_profile = user.get("profile_visibility", "public") == "followers" and not is_self and not is_following
 
     return {
         "user_id": user["user_id"],
         "name": user.get("name", "Anonim"),
         "username": user.get("username"),
-        "bio": user.get("bio"),
-        "neighborhood": user.get("neighborhood"),
+        "bio": None if private_profile else user.get("bio"),
+        "neighborhood": None if private_profile else user.get("neighborhood"),
         "picture": user.get("picture"),
         "created_at": user.get("created_at"),
         "is_following": is_following,
         "is_self": is_self,
         "is_blocked": is_blocked,
+        "private_profile": private_profile,
         "stats": {
             "whisper_count": whisper_count,
             "total_upvotes": total_up,
@@ -927,6 +966,25 @@ async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user))
         update["neighborhood"] = body.neighborhood.strip()
     if body.picture is not None:
         update["picture"] = validate_profile_picture(body.picture)
+    if body.profile_visibility is not None:
+        update["profile_visibility"] = body.profile_visibility
+    if body.allow_messages is not None:
+        update["allow_messages"] = body.allow_messages
+    notification_updates = {}
+    if body.notify_messages is not None:
+        notification_updates["messages"] = body.notify_messages
+    if body.notify_follows is not None:
+        notification_updates["follows"] = body.notify_follows
+    if body.notify_comments is not None:
+        notification_updates["comments"] = body.notify_comments
+    if notification_updates:
+        current_prefs = user.get("notification_preferences") or {}
+        update["notification_preferences"] = {
+            "messages": current_prefs.get("messages", True),
+            "follows": current_prefs.get("follows", True),
+            "comments": current_prefs.get("comments", True),
+            **notification_updates,
+        }
 
     if not update and not unset:
         return public_user(user)
@@ -950,6 +1008,26 @@ async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user))
     for key in unset:
         user.pop(key, None)
     return public_user(user)
+
+
+@api_router.delete("/users/me")
+async def delete_my_account(body: DeleteAccountBody, response: Response, user=Depends(get_current_user)):
+    uid = user["user_id"]
+    await db.users.delete_one({"user_id": uid})
+    await db.user_sessions.delete_many({"user_id": uid})
+    await db.follows.delete_many({"$or": [{"follower_id": uid}, {"followee_id": uid}]})
+    await db.blocks.delete_many({"$or": [{"blocker_id": uid}, {"blocked_id": uid}]})
+    await db.notifications.delete_many({"user_id": uid})
+    await db.messages.delete_many({"$or": [{"sender_id": uid}, {"recipient_id": uid}]})
+    await db.comments.delete_many({"user_id": uid})
+    await db.votes.delete_many({"user_id": uid})
+    await db.reports.delete_many({"reporter_id": uid})
+    await db.whispers.update_many(
+        {"user_id": uid},
+        {"$set": {"author_name": "Silinmiş Muhabir", "author_picture": None}},
+    )
+    clear_session_cookie(response)
+    return {"ok": True}
 
 
 @api_router.get("/")
@@ -1057,7 +1135,7 @@ async def list_messages(user_id: str, user=Depends(get_current_user), limit: int
 async def send_message(user_id: str, body: MessageCreate, user=Depends(get_current_user)):
     if user_id == user["user_id"]:
         raise HTTPException(status_code=400, detail="Kendine mesaj gönderemezsin")
-    other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1})
+    other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1, "allow_messages": 1})
     if not other:
         raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
     blocked = await db.blocks.find_one({
@@ -1068,6 +1146,11 @@ async def send_message(user_id: str, body: MessageCreate, user=Depends(get_curre
     })
     if blocked:
         raise HTTPException(status_code=403, detail="Bu muhabire mesaj gönderilemez")
+
+    if other.get("allow_messages", "everyone") == "followers":
+        is_followed = await db.follows.find_one({"follower_id": user_id, "followee_id": user["user_id"]})
+        if not is_followed:
+            raise HTTPException(status_code=403, detail="Bu muhabir sadece takip ettigi kisilerden mesaj aliyor")
 
     content = body.content.strip()
     if not content:

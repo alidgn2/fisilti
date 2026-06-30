@@ -129,8 +129,14 @@ export default function PublicProfile() {
                         </p>
                         <p className="font-serif italic text-sm text-inkmuted mt-1">{memberSince}'dan beri</p>
                         {profile.username && <p className="font-mono text-xs uppercase tracking-widest text-inkmuted mt-1">@{profile.username}</p>}
-                        {profile.neighborhood && <p className="font-serif italic text-sm text-inkmuted mt-1">{profile.neighborhood}</p>}
-                        {profile.bio && <p className="font-serif text-sm mt-2 leading-snug">{profile.bio}</p>}
+                        {profile.private_profile ? (
+                            <p className="font-serif italic text-sm text-inkmuted mt-2">Bu profil sadece takipcilere acik.</p>
+                        ) : (
+                            <>
+                                {profile.neighborhood && <p className="font-serif italic text-sm text-inkmuted mt-1">{profile.neighborhood}</p>}
+                                {profile.bio && <p className="font-serif text-sm mt-2 leading-snug">{profile.bio}</p>}
+                            </>
+                        )}
                     </div>
                 </div>
 
