@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Bell, X } from "lucide-react";
@@ -64,7 +65,6 @@ export default function NotificationBell() {
     const [unread, setUnread] = useState(0);
     const [items, setItems] = useState([]);
     const [loaded, setLoaded] = useState(false);
-    const containerRef = useRef(null);
 
     const refresh = useCallback(async () => {
         if (!user) return;
@@ -100,13 +100,13 @@ export default function NotificationBell() {
     }, [user, refresh]);
 
     useEffect(() => {
-        const onClick = (e) => {
-            if (!containerRef.current) return;
-            if (!containerRef.current.contains(e.target)) setOpen(false);
+        if (!open) return undefined;
+        const originalOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = originalOverflow;
         };
-        document.addEventListener("mousedown", onClick);
-        return () => document.removeEventListener("mousedown", onClick);
-    }, []);
+    }, [open]);
 
     const toggle = async () => {
         const next = !open;
@@ -126,7 +126,7 @@ export default function NotificationBell() {
     if (!user) return null;
 
     return (
-        <div className="relative" ref={containerRef}>
+        <div className="relative">
             <button
                 onClick={toggle}
                 className="relative btn-outline-ink flex items-center gap-2"
@@ -143,11 +143,11 @@ export default function NotificationBell() {
                     </span>
                 )}
             </button>
-            {open && (
-                <div className="fixed inset-0 z-[120] bg-paper">
+            {open && typeof document !== "undefined" && createPortal(
+                <div className="fixed inset-0 z-[9999] bg-[#F4EFE6]">
                     <button
                         type="button"
-                        className="absolute inset-0 cursor-default bg-paper"
+                        className="absolute inset-0 cursor-default bg-[#F4EFE6]"
                         onClick={() => setOpen(false)}
                         aria-label="Bildirimleri kapat"
                     />
@@ -181,7 +181,8 @@ export default function NotificationBell() {
                             )}
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
