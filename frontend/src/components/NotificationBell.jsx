@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Bell } from "lucide-react";
+import { Bell, X } from "lucide-react";
 
 function ago(iso) {
     const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
@@ -12,31 +12,31 @@ function ago(iso) {
     return `${Math.floor(diff / 86400)} gün`;
 }
 
-function NotificationItem({ n }) {
+function NotificationItem({ n, onSelect }) {
     const data = n.data || {};
     if (n.type === "comment") {
         return (
-            <Link to={`/fisilti/${data.whisper_id}`} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
+            <Link to={`/fisilti/${data.whisper_id}`} onClick={onSelect} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
                 <p className="font-mono text-[11px] uppercase tracking-widest text-stamp">Yeni yorum</p>
-                <p className="font-serif text-sm mt-1"><strong>{data.from_name}</strong>: {data.preview}</p>
+                <p className="font-serif text-sm mt-1 break-words leading-snug"><strong>{data.from_name}</strong>: {data.preview}</p>
                 <p className="font-mono text-[10px] uppercase tracking-widest text-inkmuted mt-1">{ago(n.created_at)}</p>
             </Link>
         );
     }
     if (n.type === "follow") {
         return (
-            <Link to={`/muhabir/${data.from_user_id}`} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
+            <Link to={`/muhabir/${data.from_user_id}`} onClick={onSelect} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
                 <p className="font-mono text-[11px] uppercase tracking-widest text-stamp">Yeni takipçi</p>
-                <p className="font-serif text-sm mt-1"><strong>{data.from_name}</strong> seni takip etmeye başladı.</p>
+                <p className="font-serif text-sm mt-1 break-words leading-snug"><strong>{data.from_name}</strong> seni takip etmeye başladı.</p>
                 <p className="font-mono text-[10px] uppercase tracking-widest text-inkmuted mt-1">{ago(n.created_at)}</p>
             </Link>
         );
     }
     if (n.type === "message") {
         return (
-            <Link to={`/mesajlar/${data.from_user_id}`} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
+            <Link to={`/mesajlar/${data.from_user_id}`} onClick={onSelect} className="block hover:bg-ink/5 -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
                 <p className="font-mono text-[11px] uppercase tracking-widest text-stamp">Yeni mesaj</p>
-                <p className="font-serif text-sm mt-1"><strong>{data.from_name}</strong>: {data.preview}</p>
+                <p className="font-serif text-sm mt-1 break-words leading-snug"><strong>{data.from_name}</strong>: {data.preview}</p>
                 <p className="font-mono text-[10px] uppercase tracking-widest text-inkmuted mt-1">{ago(n.created_at)}</p>
             </Link>
         );
@@ -45,7 +45,7 @@ function NotificationItem({ n }) {
         return (
             <div className="block -mx-2 px-2 py-3" data-testid={`notif-${n.notification_id}`}>
                 <p className="font-mono text-[11px] uppercase tracking-widest text-stamp">Fısıltın gizlendi</p>
-                <p className="font-serif text-sm mt-1">{data.reason || "İçerik kurallarına uygun değil."}</p>
+                <p className="font-serif text-sm mt-1 break-words leading-snug">{data.reason || "İçerik kurallarına uygun değil."}</p>
                 <p className="font-mono text-[10px] uppercase tracking-widest text-inkmuted mt-1">{ago(n.created_at)}</p>
             </div>
         );
@@ -144,23 +144,33 @@ export default function NotificationBell() {
                 )}
             </button>
             {open && (
-                <div
-                    className="absolute right-0 mt-2 w-[340px] max-h-[480px] overflow-y-auto bg-paper border-2 border-ink z-50 shadow-[6px_6px_0_0_rgba(26,26,26,0.5)]"
-                    data-testid="notif-dropdown"
-                >
-                    <div className="px-4 py-3 border-b-2 border-double border-ink">
-                        <p className="font-masthead text-lg font-black">Bildirimler</p>
-                    </div>
-                    <div className="px-4 py-2">
-                        {!loaded ? (
-                            <p className="font-mono text-xs uppercase tracking-widest text-inkmuted py-4 text-center">Yükleniyor...</p>
-                        ) : items.length === 0 ? (
-                            <p className="font-serif italic text-inkmuted py-6 text-center" data-testid="notif-empty">Henüz bildirim yok.</p>
-                        ) : (
-                            <ul className="divide-y divide-dashed divide-ink/30">
-                                {items.map((n) => <li key={n.notification_id}><NotificationItem n={n} /></li>)}
-                            </ul>
-                        )}
+                <div className="fixed inset-0 z-[80] pointer-events-none">
+                    <div
+                        className="pointer-events-auto absolute right-4 top-28 w-[min(420px,calc(100vw-2rem))] max-h-[min(520px,calc(100vh-8rem))] overflow-hidden bg-paper border-2 border-ink shadow-[6px_6px_0_0_rgba(26,26,26,0.5)]"
+                        data-testid="notif-dropdown"
+                    >
+                        <div className="px-4 py-3 border-b-2 border-double border-ink flex items-center justify-between gap-3">
+                            <p className="font-masthead text-xl font-black">Bildirimler</p>
+                            <button
+                                type="button"
+                                onClick={() => setOpen(false)}
+                                className="p-1 border-2 border-ink hover:bg-ink hover:text-paper"
+                                aria-label="Bildirimleri kapat"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                        <div className="px-4 py-2 max-h-[calc(min(520px,calc(100vh-8rem))-58px)] overflow-y-auto">
+                            {!loaded ? (
+                                <p className="font-mono text-xs uppercase tracking-widest text-inkmuted py-4 text-center">Yükleniyor...</p>
+                            ) : items.length === 0 ? (
+                                <p className="font-serif italic text-inkmuted py-6 text-center" data-testid="notif-empty">Henüz bildirim yok.</p>
+                            ) : (
+                                <ul className="divide-y divide-dashed divide-ink/30">
+                                    {items.map((n) => <li key={n.notification_id}><NotificationItem n={n} onSelect={() => setOpen(false)} /></li>)}
+                                </ul>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

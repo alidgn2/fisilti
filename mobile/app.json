@@ -17,6 +17,11 @@
     "android": {
       "package": "app.fisiltigazetesi.mobile",
       "edgeToEdgeEnabled": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "93203b5d-573d-4762-9aec-ea7fbf4ca5ec"
+      }
     }
   }
 }
