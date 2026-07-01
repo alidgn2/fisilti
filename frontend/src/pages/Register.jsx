@@ -18,20 +18,22 @@ export default function Register() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [ageConfirmed, setAgeConfirmed] = useState(false);
-    const [legalAccepted, setLegalAccepted] = useState(false);
+    const [privacyNoticeRead, setPrivacyNoticeRead] = useState(false);
+    const [termsAccepted, setTermsAccepted] = useState(false);
     const [busy, setBusy] = useState(false);
 
     const submit = async (e) => {
         e.preventDefault();
-        if (!ageConfirmed || !legalAccepted) {
-            toast.error("Devam etmek için 18+ beyanını ve yasal metinleri kabul etmelisin.");
+        if (!ageConfirmed || !privacyNoticeRead || !termsAccepted) {
+            toast.error("Devam etmek için 18+ beyanını, gizlilik metnini ve kullanım şartlarını tamamlamalısın.");
             return;
         }
         setBusy(true);
         try {
             await register(email, password, name, {
                 age_confirmed: ageConfirmed,
-                legal_accepted: legalAccepted,
+                privacy_notice_read: privacyNoticeRead,
+                terms_accepted: termsAccepted,
             });
             toast.success("Muhabir kartın hazır!");
             navigate("/");
@@ -104,15 +106,27 @@ export default function Register() {
                     <label className="flex items-start gap-3 border-2 border-ink p-3 font-serif text-sm leading-snug">
                         <input
                             type="checkbox"
-                            checked={legalAccepted}
-                            onChange={(e) => setLegalAccepted(e.target.checked)}
+                            checked={privacyNoticeRead}
+                            onChange={(e) => setPrivacyNoticeRead(e.target.checked)}
                             className="mt-1"
                             required
-                            data-testid="register-legal-checkbox"
+                            data-testid="register-privacy-checkbox"
                         />
                         <span>
-                            <Link to="/gizlilik" className="underline">Gizlilik Politikası</Link> ve{" "}
-                            <Link to="/kullanim-sartlari" className="underline">Kullanım Şartları</Link> metinlerini okudum, kabul ediyorum.
+                            <Link to="/gizlilik" className="underline">Gizlilik Politikası</Link> kapsamındaki aydınlatma metnini okudum.
+                        </span>
+                    </label>
+                    <label className="flex items-start gap-3 border-2 border-ink p-3 font-serif text-sm leading-snug">
+                        <input
+                            type="checkbox"
+                            checked={termsAccepted}
+                            onChange={(e) => setTermsAccepted(e.target.checked)}
+                            className="mt-1"
+                            required
+                            data-testid="register-terms-checkbox"
+                        />
+                        <span>
+                            <Link to="/kullanim-sartlari" className="underline">Kullanım Şartları</Link> metnini kabul ediyorum.
                         </span>
                     </label>
                     <button type="submit" disabled={busy} className="btn-ink w-full" data-testid="register-submit-btn">
