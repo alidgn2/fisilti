@@ -76,6 +76,7 @@ class WhisperCreate(BaseModel):
     category: str
     location: Optional[str] = Field(default=None, max_length=80)
     overheard_from: Optional[str] = Field(default=None, max_length=80)
+    image: Optional[str] = Field(default=None, max_length=1_200_000)
 
 
 class SponsoredWhisperCreate(BaseModel):
@@ -281,6 +282,22 @@ def validate_profile_picture(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def validate_whisper_image(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    allowed_prefixes = (
+        "data:image/jpeg;base64,",
+        "data:image/jpg;base64,",
+        "data:image/png;base64,",
+        "data:image/webp;base64,",
+    )
+    if not value.startswith(allowed_prefixes):
+        raise HTTPException(status_code=400, detail="Fısıltı görseli JPG, PNG veya WEBP olmalı")
+    if len(value) > 1_200_000:
+        raise HTTPException(status_code=400, detail="Fısıltı görseli çok büyük")
+    return value
+
+
 async def create_session(user_id: str) -> str:
     token = uuid.uuid4().hex + uuid.uuid4().hex
     await db.user_sessions.insert_one({
@@ -457,6 +474,7 @@ async def serialize_whisper(w: dict, current_user: Optional[dict]) -> dict:
         "author_id": w["user_id"],
         "author_name": w.get("author_name", "Anonim"),
         "author_picture": w.get("author_picture"),
+        "image": w.get("image"),
         "upvotes": w.get("upvotes", 0),
         "downvotes": w.get("downvotes", 0),
         "score": w.get("upvotes", 0) - w.get("downvotes", 0),
@@ -564,6 +582,7 @@ async def create_whisper(body: WhisperCreate, user=Depends(get_current_user)):
         "author_name": user.get("name", "Anonim"),
         "author_picture": user.get("picture"),
         "content": content,
+        "image": validate_whisper_image(body.image),
         "category": body.category,
         "location": (body.location or "").strip() or None,
         "overheard_from": (body.overheard_from or "").strip() or None,

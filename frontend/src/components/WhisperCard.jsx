@@ -91,6 +91,17 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
                 <p className={`font-mono leading-relaxed text-[15px] text-ink ${compact ? "" : "dropcap"}`}>
                     <HashtagText>{w.content}</HashtagText>
                 </p>
+                {w.image && (
+                    <figure className="mt-5 border-2 border-ink bg-paper overflow-hidden">
+                        <img
+                            src={w.image}
+                            alt="Fısıltı görseli"
+                            className="w-full max-h-[520px] object-cover grayscale group-hover:grayscale-0 transition duration-300"
+                            loading="lazy"
+                            data-testid={`whisper-image-${w.whisper_id}`}
+                        />
+                    </figure>
+                )}
             </div>
 
             <div className="mt-4 flex items-center justify-between gap-3 flex-wrap text-[12px] font-mono uppercase tracking-wider text-inkmuted">
