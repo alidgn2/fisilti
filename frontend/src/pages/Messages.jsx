@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { MessageCircle, Send } from "lucide-react";
@@ -88,6 +89,7 @@ export default function Messages() {
             const { data } = await api.post(`/messages/${targetUserId}`, { content });
             setMessages((items) => [...items, data]);
             setDraft("");
+            trackEvent("message_sent");
             await loadConversations();
         } catch (err) {
             toast.error(formatApiError(err));

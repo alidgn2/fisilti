@@ -137,6 +137,13 @@ class AdminUserActionBody(BaseModel):
     duration_hours: Optional[int] = Field(default=24, ge=1, le=720)
 
 
+class AnalyticsEventBody(BaseModel):
+    event_type: Literal["page_view", "feature"]
+    name: str = Field(min_length=1, max_length=80)
+    path: Optional[str] = Field(default=None, max_length=200)
+    metadata: Optional[dict] = None
+
+
 class BoostCheckoutBody(BaseModel):
     whisper_id: str
     package_id: str = "boost_24h"
@@ -1646,6 +1653,64 @@ async def admin_logs(user=Depends(require_admin), limit: int = Query(default=80,
     return await cursor.to_list(length=limit)
 
 
+@api_router.post("/analytics/event")
+async def record_analytics_event(body: AnalyticsEventBody, request: Request, user=Depends(get_optional_user)):
+    path = clean_text(body.path, 200) or "/"
+    name = clean_text(body.name, 80)
+    metadata = {}
+    if isinstance(body.metadata, dict):
+        for key, value in body.metadata.items():
+            if len(metadata) >= 8:
+                break
+            metadata[clean_text(str(key), 40)] = clean_text(str(value), 120)
+
+    await db.analytics_events.insert_one({
+        "event_id": new_id("evt_"),
+        "event_type": body.event_type,
+        "name": name,
+        "path": path,
+        "metadata": metadata,
+        "user_id": user.get("user_id") if user else None,
+        "user_role": user.get("role") if user else "anonymous",
+        "user_agent": clean_text(request.headers.get("user-agent"), 200),
+        "created_at": iso(now_utc()),
+    })
+    return {"ok": True}
+
+
+@api_router.get("/admin/analytics")
+async def admin_analytics(user=Depends(require_admin), days: int = Query(default=7, ge=1, le=90)):
+    since = iso(now_utc() - timedelta(days=days))
+
+    async def grouped(match: dict, group_id: dict, limit: int = 20):
+        pipeline = [
+            {"$match": {"created_at": {"$gte": since}, **match}},
+            {"$group": {"_id": group_id, "count": {"$sum": 1}, "unique_users": {"$addToSet": "$user_id"}}},
+            {"$project": {"_id": 0, **{k: f"$_id.{k}" for k in group_id.keys()}, "count": 1, "unique_users": {"$size": "$unique_users"}}},
+            {"$sort": {"count": -1}},
+            {"$limit": limit},
+        ]
+        return await db.analytics_events.aggregate(pipeline).to_list(length=limit)
+
+    total_events = await db.analytics_events.count_documents({"created_at": {"$gte": since}})
+    page_views = await db.analytics_events.count_documents({"created_at": {"$gte": since}, "event_type": "page_view"})
+    feature_events = await db.analytics_events.count_documents({"created_at": {"$gte": since}, "event_type": "feature"})
+    signed_in_events = await db.analytics_events.count_documents({"created_at": {"$gte": since}, "user_id": {"$ne": None}})
+
+    return {
+        "days": days,
+        "totals": {
+            "events": total_events,
+            "page_views": page_views,
+            "feature_events": feature_events,
+            "signed_in_events": signed_in_events,
+        },
+        "top_pages": await grouped({"event_type": "page_view"}, {"path": "$path"}),
+        "top_features": await grouped({"event_type": "feature"}, {"name": "$name"}),
+        "daily": await grouped({}, {"day": {"$substr": ["$created_at", 0, 10]}, "event_type": "$event_type"}, 60),
+    }
+
+
 @api_router.post("/admin/whispers/sponsored")
 async def admin_create_sponsored(body: SponsoredWhisperCreate, user=Depends(require_admin)):
     if body.category not in CATEGORY_IDS:
@@ -1923,6 +1988,8 @@ async def on_startup():
     await db.reports.create_index([("status", 1), ("created_at", -1)])
     await db.moderation_logs.create_index("created_at")
     await db.moderation_logs.create_index([("target_type", 1), ("target_id", 1)])
+    await db.analytics_events.create_index("created_at")
+    await db.analytics_events.create_index([("event_type", 1), ("created_at", -1)])
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_admin()
 

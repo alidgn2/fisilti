@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { toast } from "sonner";
 import { Search, UserMinus, UserPlus } from "lucide-react";
 
@@ -22,6 +23,7 @@ export default function UserSearch() {
             try {
                 const { data } = await api.get("/users/search", { params: { q: term } });
                 setUsers(data);
+                trackEvent("user_search", { result_count: data.length });
             } catch (e) {
                 toast.error(formatApiError(e));
             } finally {
@@ -37,6 +39,7 @@ export default function UserSearch() {
         setBusyId(userId);
         try {
             const { data } = await api.post(`/users/${userId}/follow`);
+            trackEvent(data.is_following ? "follow_user" : "unfollow_user");
             setUsers((items) => items.map((item) => (
                 item.user_id === userId
                     ? {

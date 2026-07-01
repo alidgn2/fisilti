@@ -16,6 +16,7 @@ export default function AdminPanel() {
     const [tab, setTab] = useState("reports");
     const [reports, setReports] = useState([]);
     const [logs, setLogs] = useState([]);
+    const [analytics, setAnalytics] = useState(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -46,10 +47,23 @@ export default function AdminPanel() {
         }
     };
 
+    const loadAnalytics = async () => {
+        setLoading(true);
+        try {
+            const { data } = await api.get("/admin/analytics", { params: { days: 7 } });
+            setAnalytics(data);
+        } catch (e) {
+            toast.error(formatApiError(e));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
         if (user?.role !== "admin") return;
         if (tab === "reports") loadReports();
         if (tab === "logs") loadLogs();
+        if (tab === "analytics") loadAnalytics();
     }, [user, tab]);
 
     const moderate = async (whisperId, action) => {
@@ -99,6 +113,9 @@ export default function AdminPanel() {
                         </button>
                         <button onClick={() => setTab("logs")} className={`px-4 py-2 border text-sm font-semibold ${tab === "logs" ? "bg-[#111] text-white" : "bg-white"}`}>
                             Loglar
+                        </button>
+                        <button onClick={() => setTab("analytics")} className={`px-4 py-2 border text-sm font-semibold ${tab === "analytics" ? "bg-[#111] text-white" : "bg-white"}`}>
+                            Analytics
                         </button>
                         <button onClick={() => setTab("sponsored")} className={`px-4 py-2 border text-sm font-semibold ${tab === "sponsored" ? "bg-[#111] text-white" : "bg-white"}`}>
                             Sponsorlu İçerik
@@ -197,6 +214,7 @@ export default function AdminPanel() {
                 )}
 
                 {tab === "logs" && <AdminLogs loading={loading} logs={logs} onRefresh={loadLogs} />}
+                {tab === "analytics" && <AdminAnalytics loading={loading} analytics={analytics} onRefresh={loadAnalytics} />}
                 {tab === "sponsored" && <SponsoredForm />}
             </div>
         </div>
@@ -241,6 +259,106 @@ function AdminLogs({ loading, logs, onRefresh }) {
                 </div>
             )}
         </section>
+    );
+}
+
+function AdminAnalytics({ loading, analytics, onRefresh }) {
+    const totals = analytics?.totals || {};
+    return (
+        <section className="mt-6 space-y-6" data-testid="admin-analytics">
+            <div className="bg-white border border-[#d0d0d0]">
+                <div className="flex items-center justify-between border-b border-[#d0d0d0] px-4 py-3">
+                    <div>
+                        <h2 className="font-bold">Analytics</h2>
+                        <p className="text-xs text-[#666]">Son {analytics?.days || 7} gÃ¼n</p>
+                    </div>
+                    <button onClick={onRefresh} className="px-3 py-1 border text-sm">Yenile</button>
+                </div>
+                {loading ? (
+                    <p className="p-4 text-sm text-[#666]">YÃ¼kleniyor...</p>
+                ) : (
+                    <div className="grid grid-cols-1 gap-3 p-4 md:grid-cols-4">
+                        <Metric label="Toplam Event" value={totals.events || 0} />
+                        <Metric label="Sayfa GÃ¶rÃ¼ntÃ¼leme" value={totals.page_views || 0} />
+                        <Metric label="Ã–zellik KullanÄ±mÄ±" value={totals.feature_events || 0} />
+                        <Metric label="GiriÅŸli Event" value={totals.signed_in_events || 0} />
+                    </div>
+                )}
+            </div>
+
+            {!loading && analytics && (
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    <AnalyticsTable title="En Ã‡ok AÃ§Ä±lan Sayfalar" rows={analytics.top_pages || []} labelKey="path" />
+                    <AnalyticsTable title="En Ã‡ok KullanÄ±lan Ã–zellikler" rows={analytics.top_features || []} labelKey="name" />
+                    <DailyTable rows={analytics.daily || []} />
+                </div>
+            )}
+        </section>
+    );
+}
+
+function Metric({ label, value }) {
+    return (
+        <div className="border border-[#d0d0d0] bg-[#fafafa] p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[#666]">{label}</p>
+            <p className="mt-2 text-3xl font-bold">{value}</p>
+        </div>
+    );
+}
+
+function AnalyticsTable({ title, rows, labelKey }) {
+    return (
+        <div className="bg-white border border-[#d0d0d0]">
+            <h3 className="border-b border-[#d0d0d0] px-4 py-3 font-bold">{title}</h3>
+            <table className="w-full text-sm">
+                <thead className="bg-[#efefef] text-left">
+                    <tr>
+                        <th className="p-3">Ad</th>
+                        <th className="p-3 text-right">Event</th>
+                        <th className="p-3 text-right">Tekil KullanÄ±cÄ±</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.length === 0 ? (
+                        <tr><td colSpan={3} className="p-3 text-[#666]">Veri yok.</td></tr>
+                    ) : rows.map((row) => (
+                        <tr key={row[labelKey]} className="border-t">
+                            <td className="p-3 break-all">{row[labelKey]}</td>
+                            <td className="p-3 text-right font-semibold">{row.count}</td>
+                            <td className="p-3 text-right">{row.unique_users}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function DailyTable({ rows }) {
+    return (
+        <div className="bg-white border border-[#d0d0d0] lg:col-span-2">
+            <h3 className="border-b border-[#d0d0d0] px-4 py-3 font-bold">GÃ¼nlÃ¼ KÄ±rÄ±lÄ±m</h3>
+            <table className="w-full text-sm">
+                <thead className="bg-[#efefef] text-left">
+                    <tr>
+                        <th className="p-3">GÃ¼n</th>
+                        <th className="p-3">Tip</th>
+                        <th className="p-3 text-right">Event</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {rows.length === 0 ? (
+                        <tr><td colSpan={3} className="p-3 text-[#666]">Veri yok.</td></tr>
+                    ) : rows.map((row) => (
+                        <tr key={`${row.day}-${row.event_type}`} className="border-t">
+                            <td className="p-3">{row.day}</td>
+                            <td className="p-3">{row.event_type}</td>
+                            <td className="p-3 text-right font-semibold">{row.count}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
     );
 }
 

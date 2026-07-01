@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { api, formatApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import WhisperCard from "@/components/WhisperCard";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -46,6 +47,7 @@ export default function WhisperDetail() {
             const { data } = await api.post(`/whispers/${id}/comments`, { content: text.trim() });
             setComments((prev) => [...prev, data]);
             setText("");
+            trackEvent("comment_created");
             if (whisper) setWhisper({ ...whisper, comment_count: (whisper.comment_count || 0) + 1 });
         } catch (e) {
             toast.error(formatApiError(e));
@@ -72,6 +74,7 @@ export default function WhisperDetail() {
                 package_id: "boost_24h",
                 origin_url: window.location.origin,
             });
+            trackEvent("boost_checkout_started");
             if (data.url) {
                 window.location.href = data.url;
             }

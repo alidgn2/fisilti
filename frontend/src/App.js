@@ -4,6 +4,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 import Masthead from "@/components/Masthead";
 import MobileNav from "@/components/MobileNav";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
 import Home from "@/pages/Home";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -49,6 +50,7 @@ function AppShell() {
 
     return (
         <>
+            <AnalyticsTracker />
             <Masthead />
             <main className="min-h-[60vh]">
                 <Routes>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { api } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { useAuth } from "@/contexts/AuthContext";
 import { Bell, X } from "lucide-react";
 
@@ -112,6 +113,7 @@ export default function NotificationBell() {
         const next = !open;
         setOpen(next);
         if (next) {
+            trackEvent("notifications_opened", { unread });
             await load();
             // mark read after opening
             try {

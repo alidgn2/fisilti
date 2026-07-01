@@ -5,6 +5,7 @@ import ShareModal from "@/components/ShareModal";
 import ReportDialog from "@/components/ReportDialog";
 import HashtagText from "@/components/HashtagText";
 import { api, formatApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -38,6 +39,7 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
         try {
             const { data } = await api.post(`/whispers/${w.whisper_id}/vote`, { value });
             setW(data);
+            trackEvent(value === 1 ? "upvote_whisper" : "downvote_whisper", { category: w.category });
             if (onChange) onChange(data);
         } catch (e) {
             toast.error(formatApiError(e));
@@ -154,7 +156,10 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
                         <MessageSquare size={13} /> {w.comment_count}
                     </Link>
                     <button
-                        onClick={() => setShareOpen(true)}
+                        onClick={() => {
+                            trackEvent("share_open", { category: w.category });
+                            setShareOpen(true);
+                        }}
                         className="ml-1 flex items-center gap-1 px-2 py-1 border-2 border-ink hover:bg-ink hover:text-paper"
                         data-testid={`whisper-share-btn-${w.whisper_id}`}
                         aria-label="Paylaş"
@@ -163,7 +168,10 @@ export default function WhisperCard({ whisper, onChange, compact = false }) {
                     </button>
                     {user && user.user_id !== w.author_id && (
                         <button
-                            onClick={() => setReportOpen(true)}
+                            onClick={() => {
+                                trackEvent("report_open", { category: w.category });
+                                setReportOpen(true);
+                            }}
                             className="ml-1 flex items-center gap-1 px-2 py-1 border-2 border-ink hover:bg-stamp hover:text-paper hover:border-stamp"
                             data-testid={`whisper-report-btn-${w.whisper_id}`}
                             aria-label="Bildir"

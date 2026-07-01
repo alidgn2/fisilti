@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Camera, Trash2 } from "lucide-react";
 import { api, formatApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { CATEGORIES } from "@/constants/categories";
 import { toast } from "sonner";
 
@@ -64,6 +65,7 @@ export default function Compose() {
                 overheard_from: overheardFrom.trim() || null,
             });
             toast.success("Fısıltı baskıya gönderildi!");
+            trackEvent("whisper_created", { category, has_image: Boolean(image) });
             navigate(`/fisilti/${data.whisper_id}`);
         } catch (err) {
             toast.error(formatApiError(err));
