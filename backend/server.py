@@ -131,6 +131,12 @@ class ModerateBody(BaseModel):
     action: Literal["hide", "approve", "delete"]
 
 
+class AdminUserActionBody(BaseModel):
+    action: Literal["warn", "silence", "ban"]
+    reason: str = Field(default="Kural ihlali", min_length=3, max_length=200)
+    duration_hours: Optional[int] = Field(default=24, ge=1, le=720)
+
+
 class BoostCheckoutBody(BaseModel):
     whisper_id: str
     package_id: str = "boost_24h"
@@ -376,6 +382,8 @@ def public_user(doc: dict) -> dict:
         "role": doc.get("role", "user"),
         "auth_provider": doc.get("auth_provider", "email"),
         "email_verified": doc.get("email_verified", True),
+        "user_status": doc.get("user_status", "active"),
+        "muted_until": doc.get("muted_until"),
         "created_at": doc.get("created_at"),
     }
 
@@ -478,6 +486,10 @@ async def get_user_from_token(token: str) -> Optional[dict]:
     if expires_at < now_utc():
         return None
     user = await db.users.find_one({"user_id": sess["user_id"]}, {"_id": 0, "password_hash": 0})
+    if not user:
+        return None
+    if user.get("user_status") == "banned":
+        raise HTTPException(status_code=403, detail="Hesabın askıya alındı")
     return user
 
 
@@ -504,6 +516,32 @@ async def get_optional_user(request: Request) -> Optional[dict]:
     if not token:
         return None
     return await get_user_from_token(token)
+
+
+def ensure_not_muted(user: dict) -> None:
+    muted_until = user.get("muted_until")
+    if not muted_until:
+        return
+    if isinstance(muted_until, str):
+        muted_until = datetime.fromisoformat(muted_until)
+    if muted_until.tzinfo is None:
+        muted_until = muted_until.replace(tzinfo=timezone.utc)
+    if muted_until > now_utc():
+        raise HTTPException(status_code=403, detail="Hesabın geçici olarak susturuldu")
+
+
+async def log_admin_action(admin: dict, action: str, target_type: str, target_id: str, reason: str = "", extra: Optional[dict] = None) -> None:
+    await db.moderation_logs.insert_one({
+        "log_id": new_id("log_"),
+        "admin_id": admin["user_id"],
+        "admin_name": admin.get("name", "Editör"),
+        "action": action,
+        "target_type": target_type,
+        "target_id": target_id,
+        "reason": clean_text(reason, 200),
+        "extra": extra or {},
+        "created_at": iso(now_utc()),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -746,7 +784,7 @@ async def list_whispers(
     limit: int = Query(default=30, ge=1, le=100),
     offset: int = Query(default=0, ge=0, le=1000),
 ):
-    q = {"moderation_status": {"$ne": "hidden"}}
+    q = {"moderation_status": {"$nin": ["hidden", "review"]}}
     if category and category != "all":
         if category not in CATEGORY_IDS:
             raise HTTPException(status_code=400, detail="Geçersiz kategori")
@@ -810,6 +848,7 @@ async def list_whispers(
 
 @api_router.post("/whispers")
 async def create_whisper(body: WhisperCreate, user=Depends(get_current_user)):
+    ensure_not_muted(user)
     if body.category not in CATEGORY_IDS:
         raise HTTPException(status_code=400, detail="Geçersiz kategori")
 
@@ -896,6 +935,7 @@ async def delete_whisper(whisper_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/whispers/{whisper_id}/vote")
 async def vote_whisper(whisper_id: str, body: VoteBody, user=Depends(get_current_user)):
+    ensure_not_muted(user)
     w = await db.whispers.find_one({"whisper_id": whisper_id})
     if not w:
         raise HTTPException(status_code=404, detail="Fısıltı bulunamadı")
@@ -945,6 +985,7 @@ async def list_comments(whisper_id: str):
 
 @api_router.post("/whispers/{whisper_id}/comments")
 async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_current_user)):
+    ensure_not_muted(user)
     w = await db.whispers.find_one({"whisper_id": whisper_id})
     if not w:
         raise HTTPException(status_code=404, detail="Fısıltı bulunamadı")
@@ -1396,6 +1437,7 @@ async def list_messages(user_id: str, user=Depends(get_current_user), limit: int
 
 @api_router.post("/messages/{user_id}")
 async def send_message(user_id: str, body: MessageCreate, user=Depends(get_current_user)):
+    ensure_not_muted(user)
     if user_id == user["user_id"]:
         raise HTTPException(status_code=400, detail="Kendine mesaj gönderemezsin")
     other = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1, "allow_messages": 1})
@@ -1469,6 +1511,7 @@ async def trending_hashtags(limit: int = Query(default=10, ge=1, le=50)):
 # ---------------------------------------------------------------------------
 @api_router.post("/whispers/{whisper_id}/report")
 async def report_whisper(whisper_id: str, body: ReportBody, user=Depends(get_current_user)):
+    ensure_not_muted(user)
     w = await db.whispers.find_one({"whisper_id": whisper_id})
     if not w:
         raise HTTPException(status_code=404, detail="Fısıltı bulunamadı")
@@ -1481,10 +1524,16 @@ async def report_whisper(whisper_id: str, body: ReportBody, user=Depends(get_cur
         "whisper_id": whisper_id,
         "reporter_id": user["user_id"],
         "reporter_name": user.get("name", "Anonim"),
-        "reason": body.reason.strip(),
+        "reason": clean_text(body.reason, 200),
         "status": "open",
         "created_at": iso(now_utc()),
     })
+    report_count = await db.reports.count_documents({"whisper_id": whisper_id, "status": "open"})
+    if report_count >= 5 and w.get("moderation_status") == "approved":
+        await db.whispers.update_one(
+            {"whisper_id": whisper_id},
+            {"$set": {"moderation_status": "review", "review_started_at": iso(now_utc()), "review_reason": "5+ şikayet eşiği"}},
+        )
     return {"ok": True}
 
 
@@ -1502,12 +1551,38 @@ async def admin_list_reports(user=Depends(require_admin), status: str = Query(de
     q = {"status": status} if status != "all" else {}
     cursor = db.reports.find(q, {"_id": 0}).sort("created_at", -1).limit(100)
     items = await cursor.to_list(length=100)
-    # Enrich with whisper preview
-    enriched = []
+    grouped = {}
     for r in items:
-        w = await db.whispers.find_one({"whisper_id": r["whisper_id"]}, {"_id": 0, "content": 1, "user_id": 1, "author_name": 1, "moderation_status": 1, "category": 1})
-        r["whisper"] = w
-        enriched.append(r)
+        row = grouped.setdefault(r["whisper_id"], {
+            "queue_id": r["whisper_id"],
+            "whisper_id": r["whisper_id"],
+            "report_count": 0,
+            "reporters": [],
+            "reasons": [],
+            "first_reported_at": r["created_at"],
+            "last_reported_at": r["created_at"],
+        })
+        row["report_count"] += 1
+        row["reporters"].append({
+            "user_id": r["reporter_id"],
+            "name": r.get("reporter_name", "Anonim"),
+            "reason": r.get("reason", ""),
+            "created_at": r["created_at"],
+        })
+        if r.get("reason") and r["reason"] not in row["reasons"]:
+            row["reasons"].append(r["reason"])
+        row["first_reported_at"] = min(row["first_reported_at"], r["created_at"])
+        row["last_reported_at"] = max(row["last_reported_at"], r["created_at"])
+
+    enriched = []
+    for row in grouped.values():
+        w = await db.whispers.find_one(
+            {"whisper_id": row["whisper_id"]},
+            {"_id": 0, "content": 1, "user_id": 1, "author_name": 1, "moderation_status": 1, "category": 1, "created_at": 1},
+        )
+        row["whisper"] = w
+        enriched.append(row)
+    enriched.sort(key=lambda r: (r["report_count"], r["last_reported_at"]), reverse=True)
     return enriched
 
 
@@ -1520,12 +1595,55 @@ async def admin_moderate_whisper(whisper_id: str, body: ModerateBody, user=Depen
         await db.whispers.delete_one({"whisper_id": whisper_id})
         await db.votes.delete_many({"whisper_id": whisper_id})
         await db.comments.delete_many({"whisper_id": whisper_id})
-        await db.reports.update_many({"whisper_id": whisper_id}, {"$set": {"status": "resolved"}})
+        await db.reports.update_many({"whisper_id": whisper_id}, {"$set": {"status": "resolved", "resolved_by": user["user_id"], "resolved_action": "delete", "resolved_at": iso(now_utc())}})
+        await log_admin_action(user, "delete_whisper", "whisper", whisper_id, extra={"author_id": w.get("user_id")})
         return {"ok": True, "action": "deleted"}
     new_status = "hidden" if body.action == "hide" else "approved"
     await db.whispers.update_one({"whisper_id": whisper_id}, {"$set": {"moderation_status": new_status}})
-    await db.reports.update_many({"whisper_id": whisper_id}, {"$set": {"status": "resolved"}})
+    await db.reports.update_many({"whisper_id": whisper_id}, {"$set": {"status": "resolved", "resolved_by": user["user_id"], "resolved_action": body.action, "resolved_at": iso(now_utc())}})
+    await log_admin_action(user, f"{body.action}_whisper", "whisper", whisper_id, extra={"moderation_status": new_status, "author_id": w.get("user_id")})
     return {"ok": True, "action": body.action, "moderation_status": new_status}
+
+
+@api_router.post("/admin/users/{user_id}/action")
+async def admin_user_action(user_id: str, body: AdminUserActionBody, user=Depends(require_admin)):
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0, "user_id": 1, "name": 1, "role": 1})
+    if not target:
+        raise HTTPException(status_code=404, detail="Muhabir bulunamadı")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Admin kullanıcıya bu işlem uygulanamaz")
+
+    reason = clean_text(body.reason, 200)
+    action_label = body.action
+    if body.action == "warn":
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$inc": {"warning_count": 1}, "$set": {"last_warning_reason": reason, "last_warning_at": iso(now_utc())}},
+        )
+        await create_notification(user_id, "moderation", {"reason": reason, "action": "warn"})
+    elif body.action == "silence":
+        muted_until = iso(now_utc() + timedelta(hours=body.duration_hours or 24))
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"muted_until": muted_until, "last_moderation_reason": reason, "last_moderated_at": iso(now_utc())}},
+        )
+        await create_notification(user_id, "moderation", {"reason": reason, "action": "silence", "muted_until": muted_until})
+    else:
+        await db.users.update_one(
+            {"user_id": user_id},
+            {"$set": {"user_status": "banned", "banned_at": iso(now_utc()), "ban_reason": reason}},
+        )
+        await db.user_sessions.delete_many({"user_id": user_id})
+        await create_notification(user_id, "moderation", {"reason": reason, "action": "ban"})
+
+    await log_admin_action(user, action_label, "user", user_id, reason, {"target_name": target.get("name")})
+    return {"ok": True, "action": action_label}
+
+
+@api_router.get("/admin/logs")
+async def admin_logs(user=Depends(require_admin), limit: int = Query(default=80, ge=1, le=200)):
+    cursor = db.moderation_logs.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    return await cursor.to_list(length=limit)
 
 
 @api_router.post("/admin/whispers/sponsored")
@@ -1802,6 +1920,9 @@ async def on_startup():
     await db.messages.create_index([("recipient_id", 1), ("created_at", -1)])
     await db.reports.create_index([("whisper_id", 1), ("reporter_id", 1)])
     await db.reports.create_index("status")
+    await db.reports.create_index([("status", 1), ("created_at", -1)])
+    await db.moderation_logs.create_index("created_at")
+    await db.moderation_logs.create_index([("target_type", 1), ("target_id", 1)])
     await db.payment_transactions.create_index("session_id", unique=True)
     await seed_admin()
 

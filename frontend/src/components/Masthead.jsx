@@ -79,7 +79,7 @@ export default function Masthead() {
                                 </Link>
                                 <NotificationBell />
                                 {user.role === "admin" && (
-                                    <Link to="/editor" className="btn-outline-ink flex items-center gap-2" data-testid="masthead-admin-link">
+                                    <Link to="/admin" className="btn-outline-ink flex items-center gap-2" data-testid="masthead-admin-link">
                                         <ShieldCheck size={14} /> Editör
                                     </Link>
                                 )}

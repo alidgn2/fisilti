@@ -67,6 +67,7 @@ function AppShell() {
                     <Route path="/odeme/basarili" element={<PaymentSuccess />} />
                     <Route path="/gizlilik" element={<PrivacyPolicy />} />
                     <Route path="/kullanim-sartlari" element={<Terms />} />
+                    <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
                     <Route path="/editor" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
                     <Route path="/yaz" element={<ProtectedRoute><Compose /></ProtectedRoute>} />
                     <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
