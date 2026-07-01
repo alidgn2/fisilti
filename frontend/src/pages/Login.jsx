@@ -71,6 +71,12 @@ export default function Login() {
                     </button>
                 </form>
 
+                <p className="mt-4 text-center font-mono text-xs uppercase tracking-widest text-inkmuted">
+                    <Link to="/sifremi-unuttum" className="underline text-ink" data-testid="login-forgot-password-link">
+                        Şifremi unuttum
+                    </Link>
+                </p>
+
                 <div className="flex items-center gap-3 my-6">
                     <div className="flex-1 divider-dashed" />
                     <span className="font-mono text-[10px] uppercase tracking-widest text-inkmuted">ya da</span>
@@ -84,7 +90,6 @@ export default function Login() {
                     className="btn-outline-ink w-full flex items-center justify-center gap-2"
                     data-testid="login-google-btn"
                 >
-                    {/* simple G mark */}
                     <span className="inline-block w-4 h-4 border-2 border-ink rounded-full" />
                     Google ile Giriş Yap
                 </button>

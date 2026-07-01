@@ -21,6 +21,9 @@ import AdminPanel from "@/pages/AdminPanel";
 import AuthCallback from "@/pages/AuthCallback";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import Terms from "@/pages/Terms";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import VerifyEmail from "@/pages/VerifyEmail";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 function Footer() {
@@ -53,6 +56,9 @@ function AppShell() {
                     <Route path="/giris" element={<Login />} />
                     <Route path="/kayit" element={<Register />} />
                     <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/sifremi-unuttum" element={<ForgotPassword />} />
+                    <Route path="/sifre-sifirla" element={<ResetPassword />} />
+                    <Route path="/email-dogrula" element={<VerifyEmail />} />
                     <Route path="/fisilti/:id" element={<WhisperDetail />} />
                     <Route path="/muhabir/:userId" element={<PublicProfile />} />
                     <Route path="/muhabir/:userId/takipciler" element={<FollowList type="followers" />} />

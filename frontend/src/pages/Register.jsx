@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { formatApiError } from "@/lib/api";
+import { api, formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 
 function startGoogleLogin() {
@@ -20,12 +20,32 @@ export default function Register() {
     const [ageConfirmed, setAgeConfirmed] = useState(false);
     const [privacyNoticeRead, setPrivacyNoticeRead] = useState(false);
     const [termsAccepted, setTermsAccepted] = useState(false);
+    const [captcha, setCaptcha] = useState(null);
+    const [captchaAnswer, setCaptchaAnswer] = useState("");
     const [busy, setBusy] = useState(false);
+
+    const loadCaptcha = async () => {
+        try {
+            const { data } = await api.get("/auth/captcha");
+            setCaptcha(data);
+            setCaptchaAnswer("");
+        } catch {
+            setCaptcha(null);
+        }
+    };
+
+    useEffect(() => {
+        loadCaptcha();
+    }, []);
 
     const submit = async (e) => {
         e.preventDefault();
         if (!ageConfirmed || !privacyNoticeRead || !termsAccepted) {
             toast.error("Devam etmek için 18+ beyanını, gizlilik metnini ve kullanım şartlarını tamamlamalısın.");
+            return;
+        }
+        if (captcha && !captchaAnswer.trim()) {
+            toast.error("Bot olmadığını doğrulamak için küçük soruyu cevapla.");
             return;
         }
         setBusy(true);
@@ -34,11 +54,14 @@ export default function Register() {
                 age_confirmed: ageConfirmed,
                 privacy_notice_read: privacyNoticeRead,
                 terms_accepted: termsAccepted,
+                captcha_id: captcha?.captcha_id,
+                captcha_answer: captchaAnswer.trim(),
             });
-            toast.success("Muhabir kartın hazır!");
+            toast.success("Muhabir kartın hazır! Email doğrulama bağlantısını da kontrol et.");
             navigate("/");
         } catch (err) {
             toast.error(formatApiError(err));
+            loadCaptcha();
         } finally {
             setBusy(false);
         }
@@ -92,6 +115,23 @@ export default function Register() {
                             data-testid="register-password-input"
                         />
                     </div>
+                    {captcha && (
+                        <div>
+                            <label className="font-mono text-[11px] uppercase tracking-widest text-inkmuted">
+                                Güvenlik Sorusu: {captcha.question}
+                            </label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                value={captchaAnswer}
+                                onChange={(e) => setCaptchaAnswer(e.target.value)}
+                                className="telegram-input"
+                                placeholder="Cevap"
+                                required
+                                data-testid="register-captcha-input"
+                            />
+                        </div>
+                    )}
                     <label className="flex items-start gap-3 border-2 border-ink p-3 font-serif text-sm leading-snug">
                         <input
                             type="checkbox"

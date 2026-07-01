@@ -10,10 +10,16 @@ import uuid
 import logging
 import bcrypt
 import stripe
+import secrets
+import hashlib
+import smtplib
+from email.message import EmailMessage
+from collections import defaultdict, deque
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
 from fastapi import FastAPI, APIRouter, Request, Response, HTTPException, Depends, Query
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
@@ -44,6 +50,17 @@ CATEGORIES = [
 CATEGORY_IDS = {c["id"] for c in CATEGORIES}
 
 SESSION_DAYS = 7
+TOKEN_MINUTES = 60
+CAPTCHA_MINUTES = 10
+RATE_LIMITS = {
+    "/api/auth/login": (10, 300),
+    "/api/auth/register": (5, 300),
+    "/api/auth/password/forgot": (5, 300),
+    "/api/auth/password/reset": (5, 300),
+    "/api/whispers": (30, 60),
+    "/api/messages": (60, 60),
+}
+rate_buckets = defaultdict(deque)
 
 # Boost packages (server-side only — frontend cannot influence price)
 BOOST_PACKAGES = {
@@ -63,6 +80,8 @@ class RegisterBody(BaseModel):
     age_confirmed: bool = False
     privacy_notice_read: bool = False
     terms_accepted: bool = False
+    captcha_id: Optional[str] = Field(default=None, max_length=80)
+    captcha_answer: Optional[str] = Field(default=None, max_length=20)
 
 
 class LoginBody(BaseModel):
@@ -72,6 +91,19 @@ class LoginBody(BaseModel):
 
 class GoogleSessionBody(BaseModel):
     session_id: str
+
+
+class TokenBody(BaseModel):
+    token: str = Field(min_length=20, max_length=160)
+
+
+class EmailBody(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetBody(BaseModel):
+    token: str = Field(min_length=20, max_length=160)
+    password: str = Field(min_length=6, max_length=128)
 
 
 class WhisperCreate(BaseModel):
@@ -172,6 +204,110 @@ def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def clean_text(value: Optional[str], max_len: int, *, collapse: bool = True) -> str:
+    if not value:
+        return ""
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", value).strip()
+    if collapse:
+        text = re.sub(r"\s+", " ", text)
+    return text[:max_len]
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def make_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def public_origin() -> str:
+    return os.environ.get("PUBLIC_APP_URL", "http://localhost:3000").rstrip("/")
+
+
+def smtp_enabled() -> bool:
+    return bool(os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"))
+
+
+def send_email(to_email: str, subject: str, text: str) -> None:
+    if not smtp_enabled():
+        logger.info("Email not sent; SMTP is not configured. To=%s Subject=%s Body=%s", to_email, subject, text)
+        return
+    msg = EmailMessage()
+    msg["From"] = os.environ["SMTP_FROM"]
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.set_content(text)
+    host = os.environ["SMTP_HOST"]
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    username = os.environ.get("SMTP_USER")
+    password = os.environ.get("SMTP_PASSWORD")
+    with smtplib.SMTP(host, port, timeout=10) as smtp:
+        if os.environ.get("SMTP_TLS", "true").lower() == "true":
+            smtp.starttls()
+        if username and password:
+            smtp.login(username, password)
+        smtp.send_message(msg)
+
+
+async def create_auth_token(user_id: str, purpose: str) -> str:
+    token = make_token()
+    await db.auth_tokens.insert_one({
+        "token_hash": hash_token(token),
+        "user_id": user_id,
+        "purpose": purpose,
+        "used": False,
+        "expires_at": iso(now_utc() + timedelta(minutes=TOKEN_MINUTES)),
+        "created_at": iso(now_utc()),
+    })
+    return token
+
+
+async def consume_auth_token(token: str, purpose: str) -> dict:
+    doc = await db.auth_tokens.find_one({"token_hash": hash_token(token), "purpose": purpose, "used": False})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Token geçersiz veya kullanılmış")
+    expires_at = doc["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now_utc():
+        raise HTTPException(status_code=400, detail="Token süresi dolmuş")
+    await db.auth_tokens.update_one({"_id": doc["_id"]}, {"$set": {"used": True, "used_at": iso(now_utc())}})
+    return doc
+
+
+async def send_verification_email(user: dict) -> None:
+    token = await create_auth_token(user["user_id"], "email_verify")
+    link = f"{public_origin()}/email-dogrula?token={token}"
+    send_email(
+        user["email"],
+        "Fısıltı Gazetesi email doğrulama",
+        f"Email adresini doğrulamak için bu bağlantıyı aç:\n\n{link}\n\nBu bağlantı {TOKEN_MINUTES} dakika geçerlidir.",
+    )
+
+
+async def verify_captcha(captcha_id: Optional[str], captcha_answer: Optional[str]) -> None:
+    if os.environ.get("CAPTCHA_ENABLED", "true").lower() != "true":
+        return
+    if not captcha_id or not captcha_answer:
+        raise HTTPException(status_code=400, detail="Captcha doğrulaması gerekli")
+    doc = await db.captcha_challenges.find_one({"captcha_id": captcha_id})
+    if not doc:
+        raise HTTPException(status_code=400, detail="Captcha geçersiz")
+    expires_at = doc["expires_at"]
+    if isinstance(expires_at, str):
+        expires_at = datetime.fromisoformat(expires_at)
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < now_utc():
+        raise HTTPException(status_code=400, detail="Captcha süresi dolmuş")
+    if hash_token(captcha_answer.strip()) != doc["answer_hash"]:
+        raise HTTPException(status_code=400, detail="Captcha cevabı hatalı")
+    await db.captcha_challenges.delete_one({"captcha_id": captcha_id})
+
+
 def extract_hashtags(text: str) -> List[str]:
     """Extract #tags from text, normalized lowercase, unique, preserve order."""
     seen = set()
@@ -239,6 +375,7 @@ def public_user(doc: dict) -> dict:
         }),
         "role": doc.get("role", "user"),
         "auth_provider": doc.get("auth_provider", "email"),
+        "email_verified": doc.get("email_verified", True),
         "created_at": doc.get("created_at"),
     }
 
@@ -376,11 +513,52 @@ app = FastAPI(title="Fısıltı Gazetesi API")
 api_router = APIRouter(prefix="/api")
 
 
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    path = request.url.path
+    key_path = None
+    for candidate in RATE_LIMITS:
+        if path == candidate or path.startswith(candidate + "/"):
+            key_path = candidate
+            break
+    if key_path and request.method in {"POST", "PUT", "DELETE"}:
+        limit, window = RATE_LIMITS[key_path]
+        forwarded = request.headers.get("x-forwarded-for", "")
+        ip = (forwarded.split(",")[0].strip() if forwarded else None) or (request.client.host if request.client else "unknown")
+        bucket_key = f"{ip}:{key_path}"
+        now_ts = datetime.now().timestamp()
+        bucket = rate_buckets[bucket_key]
+        while bucket and now_ts - bucket[0] > window:
+            bucket.popleft()
+        if len(bucket) >= limit:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Çok fazla istek geldi. Biraz bekleyip tekrar dene."},
+            )
+        bucket.append(now_ts)
+    return await call_next(request)
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
+@api_router.get("/auth/captcha")
+async def captcha_challenge():
+    left = secrets.randbelow(8) + 2
+    right = secrets.randbelow(8) + 2
+    captcha_id = new_id("cap_")
+    await db.captcha_challenges.insert_one({
+        "captcha_id": captcha_id,
+        "answer_hash": hash_token(str(left + right)),
+        "expires_at": iso(now_utc() + timedelta(minutes=CAPTCHA_MINUTES)),
+        "created_at": iso(now_utc()),
+    })
+    return {"captcha_id": captcha_id, "question": f"{left} + {right} = ?"}
+
+
 @api_router.post("/auth/register")
 async def register(body: RegisterBody, response: Response):
+    await verify_captcha(body.captcha_id, body.captcha_answer)
     if not body.age_confirmed:
         raise HTTPException(status_code=400, detail="Fısıltı Gazetesi'ne kayıt için 18 yaş beyanı gereklidir")
     if not body.privacy_notice_read:
@@ -394,16 +572,20 @@ async def register(body: RegisterBody, response: Response):
         raise HTTPException(status_code=400, detail="Bu email zaten kayıtlı")
 
     user_id = new_id("u_")
+    name = clean_text(body.name, 60)
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Muhabir adı çok kısa")
     doc = {
         "user_id": user_id,
         "email": email,
-        "name": body.name.strip(),
+        "name": name,
         "bio": "",
         "neighborhood": "",
         "password_hash": hash_password(body.password),
         "picture": None,
         "role": "user",
         "auth_provider": "email",
+        "email_verified": False,
         "age_confirmed": True,
         "privacy_notice_read_at": iso(now_utc()),
         "terms_accepted_at": iso(now_utc()),
@@ -411,10 +593,11 @@ async def register(body: RegisterBody, response: Response):
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(doc)
+    await send_verification_email(doc)
 
     token = await create_session(user_id)
     set_session_cookie(response, token)
-    return {"user": public_user(doc), "session_token": token}
+    return {"user": public_user(doc), "session_token": token, "email_verification_sent": True}
 
 
 @api_router.post("/auth/login")
@@ -425,10 +608,55 @@ async def login(body: LoginBody, response: Response):
         raise HTTPException(status_code=401, detail="Email veya şifre hatalı")
     if not verify_password(body.password, user["password_hash"]):
         raise HTTPException(status_code=401, detail="Email veya şifre hatalı")
+    if os.environ.get("EMAIL_VERIFICATION_REQUIRED", "false").lower() == "true" and user.get("email_verified") is False:
+        raise HTTPException(status_code=403, detail="Giriş için email adresini doğrulamalısın")
 
     token = await create_session(user["user_id"])
     set_session_cookie(response, token)
     return {"user": public_user(user), "session_token": token}
+
+
+@api_router.post("/auth/email/verify")
+async def verify_email(body: TokenBody):
+    token_doc = await consume_auth_token(body.token, "email_verify")
+    await db.users.update_one(
+        {"user_id": token_doc["user_id"]},
+        {"$set": {"email_verified": True, "email_verified_at": iso(now_utc())}},
+    )
+    return {"ok": True}
+
+
+@api_router.post("/auth/email/resend")
+async def resend_verification_email(body: EmailBody):
+    user = await db.users.find_one({"email": body.email.lower().strip()})
+    if user and user.get("email_verified") is False:
+        await send_verification_email(user)
+    return {"ok": True}
+
+
+@api_router.post("/auth/password/forgot")
+async def forgot_password(body: EmailBody):
+    user = await db.users.find_one({"email": body.email.lower().strip()})
+    if user and user.get("password_hash"):
+        token = await create_auth_token(user["user_id"], "password_reset")
+        link = f"{public_origin()}/sifre-sifirla?token={token}"
+        send_email(
+            user["email"],
+            "Fısıltı Gazetesi şifre sıfırlama",
+            f"Şifreni sıfırlamak için bu bağlantıyı aç:\n\n{link}\n\nBu bağlantı {TOKEN_MINUTES} dakika geçerlidir.",
+        )
+    return {"ok": True}
+
+
+@api_router.post("/auth/password/reset")
+async def reset_password(body: PasswordResetBody):
+    token_doc = await consume_auth_token(body.token, "password_reset")
+    await db.users.update_one(
+        {"user_id": token_doc["user_id"]},
+        {"$set": {"password_hash": hash_password(body.password), "password_changed_at": iso(now_utc())}},
+    )
+    await db.user_sessions.delete_many({"user_id": token_doc["user_id"]})
+    return {"ok": True}
 
 
 @api_router.post("/auth/google-session")
@@ -585,7 +813,9 @@ async def create_whisper(body: WhisperCreate, user=Depends(get_current_user)):
     if body.category not in CATEGORY_IDS:
         raise HTTPException(status_code=400, detail="Geçersiz kategori")
 
-    content = body.content.strip()
+    content = clean_text(body.content, 600)
+    if len(content) < 10:
+        raise HTTPException(status_code=400, detail="Fısıltı çok kısa")
     hashtags = extract_hashtags(content)
     moderation = await moderate_content(content)
     moderation_status = "approved" if moderation["allowed"] else "hidden"
@@ -598,8 +828,8 @@ async def create_whisper(body: WhisperCreate, user=Depends(get_current_user)):
         "content": content,
         "image": validate_whisper_image(body.image),
         "category": body.category,
-        "location": (body.location or "").strip() or None,
-        "overheard_from": (body.overheard_from or "").strip() or None,
+        "location": clean_text(body.location, 80) or None,
+        "overheard_from": clean_text(body.overheard_from, 80) or None,
         "hashtags": hashtags,
         "upvotes": 0,
         "downvotes": 0,
@@ -724,7 +954,7 @@ async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_
         "user_id": user["user_id"],
         "author_name": user.get("name", "Anonim"),
         "author_picture": user.get("picture"),
-        "content": body.content.strip(),
+        "content": clean_text(body.content, 400),
         "created_at": iso(now_utc()),
     }
     await db.comments.insert_one(doc)
@@ -738,7 +968,7 @@ async def create_comment(whisper_id: str, body: CommentCreate, user=Depends(get_
                 "whisper_id": whisper_id,
                 "from_user_id": user["user_id"],
                 "from_name": user.get("name", "Anonim"),
-                "preview": body.content.strip()[:120],
+                "preview": clean_text(body.content, 120),
             },
         )
     return doc
@@ -982,7 +1212,7 @@ async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user))
     update = {}
     unset = {}
     if body.name is not None:
-        update["name"] = body.name.strip()
+        update["name"] = clean_text(body.name, 60)
     if body.username is not None:
         username = normalize_username(body.username)
         if username:
@@ -994,9 +1224,9 @@ async def update_my_profile(body: ProfileUpdate, user=Depends(get_current_user))
         else:
             unset["username"] = ""
     if body.bio is not None:
-        update["bio"] = body.bio.strip()
+        update["bio"] = clean_text(body.bio, 160)
     if body.neighborhood is not None:
-        update["neighborhood"] = body.neighborhood.strip()
+        update["neighborhood"] = clean_text(body.neighborhood, 60)
     if body.picture is not None:
         update["picture"] = validate_profile_picture(body.picture)
     if body.profile_visibility is not None:
@@ -1185,7 +1415,9 @@ async def send_message(user_id: str, body: MessageCreate, user=Depends(get_curre
         if not is_followed:
             raise HTTPException(status_code=403, detail="Bu muhabir sadece takip ettigi kisilerden mesaj aliyor")
 
-    content = body.content.strip()
+    content = clean_text(body.content, 600)
+    if len(content) < 10:
+        raise HTTPException(status_code=400, detail="Fısıltı çok kısa")
     if not content:
         raise HTTPException(status_code=400, detail="Mesaj boş olamaz")
 
@@ -1300,22 +1532,25 @@ async def admin_moderate_whisper(whisper_id: str, body: ModerateBody, user=Depen
 async def admin_create_sponsored(body: SponsoredWhisperCreate, user=Depends(require_admin)):
     if body.category not in CATEGORY_IDS:
         raise HTTPException(status_code=400, detail="Geçersiz kategori")
-    content = body.content.strip()
+    content = clean_text(body.content, 600)
+    if len(content) < 10:
+        raise HTTPException(status_code=400, detail="Sponsor fısıltısı çok kısa")
+    sponsor_name = clean_text(body.sponsor_name, 80)
     doc = {
         "whisper_id": new_id("w_"),
         "user_id": user["user_id"],
-        "author_name": body.sponsor_name.strip(),
+        "author_name": sponsor_name,
         "author_picture": None,
         "content": content,
         "category": body.category,
-        "location": (body.location or "").strip() or None,
-        "overheard_from": (body.overheard_from or "").strip() or None,
+        "location": clean_text(body.location, 80) or None,
+        "overheard_from": clean_text(body.overheard_from, 80) or None,
         "hashtags": extract_hashtags(content),
         "upvotes": 0,
         "downvotes": 0,
         "is_sponsored": True,
-        "sponsor_name": body.sponsor_name.strip(),
-        "sponsor_url": (body.sponsor_url or "").strip() or None,
+        "sponsor_name": sponsor_name,
+        "sponsor_url": clean_text(body.sponsor_url, 200) or None,
         "is_boosted": False,
         "boost_expires_at": None,
         "moderation_status": "approved",
@@ -1517,6 +1752,7 @@ async def seed_admin():
             "picture": None,
             "role": "admin",
             "auth_provider": "email",
+            "email_verified": True,
             "created_at": iso(now_utc()),
         })
         logger.info(f"Admin seeded: {admin_email}")
@@ -1544,6 +1780,10 @@ async def on_startup():
     )
     await db.user_sessions.create_index("session_token", unique=True)
     await db.user_sessions.create_index("user_id")
+    await db.auth_tokens.create_index("token_hash", unique=True)
+    await db.auth_tokens.create_index([("user_id", 1), ("purpose", 1)])
+    await db.captcha_challenges.create_index("captcha_id", unique=True)
+    await db.captcha_challenges.create_index("expires_at")
     await db.whispers.create_index("whisper_id", unique=True)
     await db.whispers.create_index("created_at")
     await db.whispers.create_index("category")
