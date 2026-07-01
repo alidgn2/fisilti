@@ -17,13 +17,22 @@ export default function Register() {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [ageConfirmed, setAgeConfirmed] = useState(false);
+    const [legalAccepted, setLegalAccepted] = useState(false);
     const [busy, setBusy] = useState(false);
 
     const submit = async (e) => {
         e.preventDefault();
+        if (!ageConfirmed || !legalAccepted) {
+            toast.error("Devam etmek için 18+ beyanını ve yasal metinleri kabul etmelisin.");
+            return;
+        }
         setBusy(true);
         try {
-            await register(email, password, name);
+            await register(email, password, name, {
+                age_confirmed: ageConfirmed,
+                legal_accepted: legalAccepted,
+            });
             toast.success("Muhabir kartın hazır!");
             navigate("/");
         } catch (err) {
@@ -81,6 +90,31 @@ export default function Register() {
                             data-testid="register-password-input"
                         />
                     </div>
+                    <label className="flex items-start gap-3 border-2 border-ink p-3 font-serif text-sm leading-snug">
+                        <input
+                            type="checkbox"
+                            checked={ageConfirmed}
+                            onChange={(e) => setAgeConfirmed(e.target.checked)}
+                            className="mt-1"
+                            required
+                            data-testid="register-age-checkbox"
+                        />
+                        <span>18 yaşından büyük olduğumu ve platformun anonim/söylenti niteliğini anladığımı beyan ederim.</span>
+                    </label>
+                    <label className="flex items-start gap-3 border-2 border-ink p-3 font-serif text-sm leading-snug">
+                        <input
+                            type="checkbox"
+                            checked={legalAccepted}
+                            onChange={(e) => setLegalAccepted(e.target.checked)}
+                            className="mt-1"
+                            required
+                            data-testid="register-legal-checkbox"
+                        />
+                        <span>
+                            <Link to="/gizlilik" className="underline">Gizlilik Politikası</Link> ve{" "}
+                            <Link to="/kullanim-sartlari" className="underline">Kullanım Şartları</Link> metinlerini okudum, kabul ediyorum.
+                        </span>
+                    </label>
                     <button type="submit" disabled={busy} className="btn-ink w-full" data-testid="register-submit-btn">
                         {busy ? "Kayıt ediliyor..." : "Muhabir Ol"}
                     </button>

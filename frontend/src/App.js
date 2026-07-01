@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation, Link } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { Toaster } from "@/components/ui/sonner";
 import Masthead from "@/components/Masthead";
@@ -19,13 +19,19 @@ import HashtagFeed from "@/pages/HashtagFeed";
 import PaymentSuccess from "@/pages/PaymentSuccess";
 import AdminPanel from "@/pages/AdminPanel";
 import AuthCallback from "@/pages/AuthCallback";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import Terms from "@/pages/Terms";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 function Footer() {
     return (
         <footer className="border-t-4 border-double border-ink mt-16 py-8 relative z-10">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center font-mono text-[11px] uppercase tracking-[0.3em] text-inkmuted">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center font-mono text-[11px] uppercase tracking-[0.3em] text-inkmuted space-y-3">
                 Fısıltı Gazetesi — Mahalle Ajansı • Söylentidir, Haber Değildir • {new Date().getFullYear()}
+                <p className="flex flex-wrap justify-center gap-4 tracking-[0.2em]">
+                    <Link to="/gizlilik" className="hover:text-ink underline">Gizlilik Politikası</Link>
+                    <Link to="/kullanim-sartlari" className="hover:text-ink underline">Kullanım Şartları</Link>
+                </p>
             </div>
         </footer>
     );
@@ -53,6 +59,8 @@ function AppShell() {
                     <Route path="/muhabir/:userId/takip-edilenler" element={<FollowList type="following" />} />
                     <Route path="/etiket/:tag" element={<HashtagFeed />} />
                     <Route path="/odeme/basarili" element={<PaymentSuccess />} />
+                    <Route path="/gizlilik" element={<PrivacyPolicy />} />
+                    <Route path="/kullanim-sartlari" element={<Terms />} />
                     <Route path="/editor" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
                     <Route path="/yaz" element={<ProtectedRoute><Compose /></ProtectedRoute>} />
                     <Route path="/profil" element={<ProtectedRoute><Profile /></ProtectedRoute>} />

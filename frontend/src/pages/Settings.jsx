@@ -244,6 +244,10 @@ export default function Settings() {
                     <p className="font-serif italic text-inkmuted mt-2">
                         Hesabını silersen oturumun kapanır, mesajların ve takiplerin temizlenir. Yazdığın fısıltılar silinmiş muhabir adıyla kalır.
                     </p>
+                    <p className="font-serif text-inkmuted mt-2">
+                        KVKK kapsamındaki veri talepleri için hesabındaki e-posta adresinden{" "}
+                        <a className="underline" href="mailto:destek@fisiltigazetesi.app">destek@fisiltigazetesi.app</a> adresine yazabilirsin.
+                    </p>
                     <button type="button" onClick={deleteAccount} disabled={deleting} className="btn-outline-ink mt-4 flex items-center gap-2" data-testid="settings-delete-account-btn">
                         <Trash2 size={14} /> {deleting ? "Siliniyor..." : "Hesabı Sil"}
                     </button>

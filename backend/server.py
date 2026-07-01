@@ -60,6 +60,8 @@ class RegisterBody(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
     name: str = Field(min_length=2, max_length=60)
+    age_confirmed: bool = False
+    legal_accepted: bool = False
 
 
 class LoginBody(BaseModel):
@@ -378,6 +380,11 @@ api_router = APIRouter(prefix="/api")
 # ---------------------------------------------------------------------------
 @api_router.post("/auth/register")
 async def register(body: RegisterBody, response: Response):
+    if not body.age_confirmed:
+        raise HTTPException(status_code=400, detail="Fısıltı Gazetesi'ne kayıt için 18 yaş beyanı gereklidir")
+    if not body.legal_accepted:
+        raise HTTPException(status_code=400, detail="Gizlilik Politikası ve Kullanım Şartları kabul edilmelidir")
+
     email = body.email.lower().strip()
     existing = await db.users.find_one({"email": email})
     if existing:
@@ -394,6 +401,9 @@ async def register(body: RegisterBody, response: Response):
         "picture": None,
         "role": "user",
         "auth_provider": "email",
+        "age_confirmed": True,
+        "legal_accepted_at": iso(now_utc()),
+        "legal_version": "2026-07-01",
         "created_at": iso(now_utc()),
     }
     await db.users.insert_one(doc)
