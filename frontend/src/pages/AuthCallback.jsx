@@ -12,6 +12,9 @@ export default function AuthCallback() {
         if (processed.current) return;
         processed.current = true;
 
+        const params = new URLSearchParams(window.location.search);
+        const nextPath = params.get("next");
+        const redirectTo = nextPath && nextPath.startsWith("/") && !nextPath.startsWith("//") ? nextPath : "/";
         const hash = window.location.hash;
         const match = hash.match(/session_id=([^&]+)/);
         if (!match) {
@@ -24,9 +27,8 @@ export default function AuthCallback() {
             try {
                 const { data } = await api.post("/auth/google-session", { session_id: sessionId });
                 setUser(data.user);
-                // Clean hash and go home
-                window.history.replaceState(null, "", "/");
-                navigate("/", { replace: true });
+                window.history.replaceState(null, "", redirectTo);
+                navigate(redirectTo, { replace: true });
             } catch {
                 navigate("/giris?error=oauth", { replace: true });
             }

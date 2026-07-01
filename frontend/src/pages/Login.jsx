@@ -1,19 +1,26 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatApiError } from "@/lib/api";
 import { toast } from "sonner";
 
-function startGoogleLogin() {
+function safeRedirect(value) {
+    if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
+    return value;
+}
+
+function startGoogleLogin(nextPath) {
     const googleAuthUrl = process.env.REACT_APP_GOOGLE_AUTH_URL;
     if (!googleAuthUrl) return;
-    const redirectUrl = window.location.origin + "/auth/callback";
+    const redirectUrl = `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`;
     window.location.href = `${googleAuthUrl}?redirect=${encodeURIComponent(redirectUrl)}`;
 }
 
 export default function Login() {
     const { login } = useAuth();
     const navigate = useNavigate();
+    const [params] = useSearchParams();
+    const nextPath = safeRedirect(params.get("redirect"));
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [busy, setBusy] = useState(false);
@@ -24,7 +31,7 @@ export default function Login() {
         try {
             await login(email, password);
             toast.success("Hoş geldin muhabir!");
-            navigate("/");
+            navigate(nextPath, { replace: true });
         } catch (err) {
             toast.error(formatApiError(err));
         } finally {
@@ -85,7 +92,7 @@ export default function Login() {
 
                 <button
                     type="button"
-                    onClick={startGoogleLogin}
+                    onClick={() => startGoogleLogin(nextPath)}
                     disabled={!process.env.REACT_APP_GOOGLE_AUTH_URL}
                     className="btn-outline-ink w-full flex items-center justify-center gap-2"
                     data-testid="login-google-btn"
